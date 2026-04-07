@@ -3,6 +3,7 @@ import type { QuickPhrase } from '../../types';
 import { TimestampButton } from './TimestampButton';
 import { QuickPhrases } from './QuickPhrases';
 import { PhotoAttach } from './PhotoAttach';
+import { ClassStartControl } from './ClassStartControl';
 
 interface Props {
   value: string;
@@ -11,6 +12,8 @@ interface Props {
   onAddPhoto: (dataUrl: string) => void;
   onRemovePhoto: (index: number) => void;
   quickPhrases: QuickPhrase[];
+  classStartTime: number | null;
+  onClassStartTimeChange: (t: number | null) => void;
 }
 
 export const TextEditor: React.FC<Props> = ({
@@ -20,6 +23,8 @@ export const TextEditor: React.FC<Props> = ({
   onAddPhoto,
   onRemovePhoto,
   quickPhrases,
+  classStartTime,
+  onClassStartTimeChange,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -34,7 +39,6 @@ export const TextEditor: React.FC<Props> = ({
       const end = ta.selectionEnd;
       const newValue = value.substring(0, start) + text + value.substring(end);
       onChange(newValue);
-      // Restore cursor position after insert
       requestAnimationFrame(() => {
         ta.selectionStart = ta.selectionEnd = start + text.length;
         ta.focus();
@@ -43,12 +47,73 @@ export const TextEditor: React.FC<Props> = ({
     [value, onChange]
   );
 
+  /**
+   * 現在カーソルがある行の先頭に `[ラベル] ` を挿入する。
+   * 先頭のタイムスタンプ（数字とコロンのみ）は保持し、
+   * 既にラベルがあれば置換する。
+   */
+  const insertLabel = useCallback(
+    (label: string) => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+
+      const cursor = ta.selectionStart;
+      const before = value.substring(0, cursor);
+      const lineStart = before.lastIndexOf('\n') + 1;
+      const afterFromLineStart = value.substring(lineStart);
+      const nlIdx = afterFromLineStart.indexOf('\n');
+      const lineEnd = nlIdx === -1 ? value.length : lineStart + nlIdx;
+      const currentLine = value.substring(lineStart, lineEnd);
+
+      // 1) 先頭のタイムスタンプ `[HH:MM(:SS)]` を検出（保持する）
+      const tsRe = /^\[[0-9:]+\]\s?/;
+      const tsMatch = currentLine.match(tsRe);
+      const tsPart = tsMatch ? tsMatch[0] : '';
+      const afterTs = currentLine.substring(tsPart.length);
+
+      // 2) タイムスタンプの後に既存のラベル `[...]` があれば置換対象とする
+      //    ただし数字＋コロンだけの場合はラベルではなくタイムスタンプなので対象外
+      const labelRe = /^\[([^\]]+)\]\s?/;
+      const labelMatch = afterTs.match(labelRe);
+      const isReplaceable =
+        !!labelMatch && !/^[0-9:]+$/.test(labelMatch[1]);
+
+      const remainder = isReplaceable
+        ? afterTs.substring(labelMatch![0].length)
+        : afterTs;
+
+      const newLine = `${tsPart}[${label}] ${remainder}`;
+
+      const newValue =
+        value.substring(0, lineStart) + newLine + value.substring(lineEnd);
+      onChange(newValue);
+
+      requestAnimationFrame(() => {
+        const newCursor = lineStart + newLine.length;
+        ta.selectionStart = ta.selectionEnd = newCursor;
+        ta.focus();
+      });
+    },
+    [value, onChange]
+  );
+
   return (
     <div className="flex flex-col gap-3 p-4 h-full">
+      {/* Class start control */}
+      <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-gray-100">
+        <ClassStartControl
+          classStartTime={classStartTime}
+          onChange={onClassStartTimeChange}
+        />
+      </div>
+
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <TimestampButton onInsert={insertAtCursor} />
-        <QuickPhrases phrases={quickPhrases} onInsert={insertAtCursor} />
+        <TimestampButton
+          onInsert={insertAtCursor}
+          classStartTime={classStartTime}
+        />
+        <QuickPhrases phrases={quickPhrases} onInsertLabel={insertLabel} />
       </div>
 
       {/* Text area */}
@@ -56,8 +121,8 @@ export const TextEditor: React.FC<Props> = ({
         ref={textareaRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="授業の観察メモを入力してください...&#10;&#10;タイムスタンプボタンで時刻を挿入できます。"
-        className="flex-1 w-full p-4 border border-gray-200 rounded-lg resize-y text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent min-h-[200px]"
+        placeholder="授業の観察メモを入力してください...&#10;&#10;・タイムスタンプ: 授業開始からの経過時刻を挿入（未設定なら現在時刻）&#10;・定型文ボタン: その行の先頭にラベルとして挿入"
+        className="flex-1 w-full p-4 border border-gray-200 rounded-lg resize-y text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent min-h-[200px] font-mono"
       />
 
       {/* Photo attach */}

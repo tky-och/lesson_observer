@@ -4,6 +4,7 @@ export interface SessionMetadata {
   subject: string;
   grade: string;
   teacher: string;
+  classStartTime: number | null; // epoch ms — 授業開始時刻
 }
 
 export interface Stroke {

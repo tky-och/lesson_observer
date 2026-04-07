@@ -69,6 +69,30 @@ const App: React.FC = () => {
     );
   }, []);
 
+  const handleClassStartTimeChange = useCallback((t: number | null) => {
+    setSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            metadata: { ...prev.metadata, classStartTime: t },
+            updatedAt: Date.now(),
+          }
+        : null
+    );
+  }, []);
+
+  const handleImportSession = useCallback(
+    async (imported: Session) => {
+      await storage.saveSession(imported);
+      setSession(imported);
+      drawing.setStrokes(imported.freehandStrokes || []);
+      setPhotos([]);
+      setActiveTab('observation');
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   const handleAddMaterial = useCallback(async (file: File) => {
     const buffer = await file.arrayBuffer();
     const isPdf = file.type === 'application/pdf';
@@ -183,52 +207,52 @@ const App: React.FC = () => {
 
           <div className="flex-1 overflow-hidden">
             {activeTab === 'observation' ? (
-              <div className="flex flex-col h-full lg:flex-row">
-                {/* Text editor area */}
-                <div className="flex-1 overflow-auto">
-                  <TextEditor
-                    value={session.textNotes}
-                    onChange={handleTextChange}
-                    photos={photos}
-                    onAddPhoto={handleAddPhoto}
-                    onRemovePhoto={handleRemovePhoto}
-                    quickPhrases={settings.quickPhrases}
-                  />
-                </div>
-                {/* Freehand drawing area */}
-                <div className="lg:w-1/2 border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col">
-                  <DrawingToolbar
-                    penColor={drawing.penColor}
-                    penSize={drawing.penSize}
-                    isErasing={drawing.isErasing}
+              <div className="h-full overflow-auto">
+                <TextEditor
+                  value={session.textNotes}
+                  onChange={handleTextChange}
+                  photos={photos}
+                  onAddPhoto={handleAddPhoto}
+                  onRemovePhoto={handleRemovePhoto}
+                  quickPhrases={settings.quickPhrases}
+                  classStartTime={session.metadata.classStartTime}
+                  onClassStartTimeChange={handleClassStartTimeChange}
+                />
+              </div>
+            ) : activeTab === 'handwriting' ? (
+              <div className="flex flex-col h-full">
+                <DrawingToolbar
+                  penColor={drawing.penColor}
+                  penSize={drawing.penSize}
+                  isErasing={drawing.isErasing}
+                  isDrawingMode={drawing.isDrawingMode}
+                  canUndo={drawing.strokes.length > 0}
+                  canRedo={drawing.undoneStrokes.length > 0}
+                  onColorChange={drawing.setPenColor}
+                  onSizeChange={drawing.setPenSize}
+                  onToggleEraser={() => drawing.setIsErasing(!drawing.isErasing)}
+                  onToggleDrawingMode={() => drawing.setIsDrawingMode(!drawing.isDrawingMode)}
+                  onUndo={drawing.undo}
+                  onRedo={drawing.redo}
+                  onClear={() => {
+                    if (window.confirm('手書きメモをすべて消去しますか？')) {
+                      drawing.clearAll();
+                    }
+                  }}
+                />
+                <div
+                  className="flex-1 overflow-hidden"
+                  style={{ backgroundColor: '#ffffff' }}
+                >
+                  <DrawingCanvas
+                    strokes={drawing.strokes}
+                    currentStroke={drawing.currentStroke}
                     isDrawingMode={drawing.isDrawingMode}
-                    canUndo={drawing.strokes.length > 0}
-                    canRedo={drawing.undoneStrokes.length > 0}
-                    onColorChange={drawing.setPenColor}
-                    onSizeChange={drawing.setPenSize}
-                    onToggleEraser={() => drawing.setIsErasing(!drawing.isErasing)}
-                    onToggleDrawingMode={() => drawing.setIsDrawingMode(!drawing.isDrawingMode)}
-                    onUndo={drawing.undo}
-                    onRedo={drawing.redo}
-                    onClear={() => {
-                      if (window.confirm('手書きメモをすべて消去しますか？')) {
-                        drawing.clearAll();
-                      }
-                    }}
+                    onStartStroke={drawing.startStroke}
+                    onAddPoint={drawing.addPoint}
+                    onEndStroke={drawing.endStroke}
+                    svgRef={svgRef}
                   />
-                  <div className="flex-1 overflow-auto bg-white">
-                    <DrawingCanvas
-                      strokes={drawing.strokes}
-                      currentStroke={drawing.currentStroke}
-                      isDrawingMode={drawing.isDrawingMode}
-                      width={800}
-                      height={600}
-                      onStartStroke={drawing.startStroke}
-                      onAddPoint={drawing.addPoint}
-                      onEndStroke={drawing.endStroke}
-                      svgRef={svgRef}
-                    />
-                  </div>
                 </div>
               </div>
             ) : activeMaterial ? (
@@ -281,6 +305,7 @@ const App: React.FC = () => {
         <ExportPanel
           session={session}
           onClose={() => setShowExport(false)}
+          onImport={handleImportSession}
         />
       )}
     </div>

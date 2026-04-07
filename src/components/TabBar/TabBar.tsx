@@ -64,6 +64,18 @@ export const TabBar: React.FC<Props> = ({
         📝 観察メモ
       </button>
 
+      {/* Handwriting tab (always second) */}
+      <button
+        onClick={() => onTabChange('handwriting')}
+        className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+          activeTab === 'handwriting'
+            ? 'border-blue-600 text-blue-600 bg-white'
+            : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+        }`}
+      >
+        ✍️ 手書き
+      </button>
+
       {/* Material tabs */}
       {materials.map((mat) => (
         <div

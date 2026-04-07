@@ -5,6 +5,8 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #f9fafb;
+  color: #111827;
 }
 
 #root {
@@ -22,4 +24,66 @@ button, .touch-target {
 /* Canvas touch behavior */
 .drawing-active {
   touch-action: none;
+}
+
+/* =========================================================
+ * Dark mode — system setting (prefers-color-scheme: dark)
+ * =======================================================*/
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #0b0f14;
+    color: #e5e7eb;
+    color-scheme: dark;
+  }
+
+  /* Backgrounds */
+  .bg-white { background-color: #1f2937 !important; }
+  .bg-gray-50 { background-color: #111827 !important; }
+  .bg-gray-100 { background-color: #1f2937 !important; }
+  .bg-gray-200 { background-color: #374151 !important; }
+  .bg-blue-50 { background-color: #1e293b !important; }
+  .bg-yellow-50 { background-color: #422006 !important; }
+  .bg-green-50 { background-color: #052e2b !important; }
+  .bg-orange-50 { background-color: #431407 !important; }
+  .bg-red-50 { background-color: #450a0a !important; }
+  .bg-black\/50 { background-color: rgba(0,0,0,0.7) !important; }
+
+  /* Text */
+  .text-gray-900 { color: #f9fafb !important; }
+  .text-gray-800 { color: #f3f4f6 !important; }
+  .text-gray-700 { color: #e5e7eb !important; }
+  .text-gray-600 { color: #d1d5db !important; }
+  .text-gray-500 { color: #9ca3af !important; }
+  .text-gray-400 { color: #9ca3af !important; }
+  .text-gray-300 { color: #6b7280 !important; }
+
+  /* Borders */
+  .border-gray-100 { border-color: #374151 !important; }
+  .border-gray-200 { border-color: #374151 !important; }
+  .border-gray-300 { border-color: #4b5563 !important; }
+  .border-blue-200 { border-color: #1e40af !important; }
+  .border-yellow-200 { border-color: #78350f !important; }
+  .border-green-200 { border-color: #065f46 !important; }
+  .border-orange-200 { border-color: #7c2d12 !important; }
+  .border-blue-300 { border-color: #2563eb !important; }
+
+  /* Inputs */
+  input, textarea, select {
+    background-color: #111827;
+    color: #f3f4f6;
+    border-color: #374151;
+  }
+  input::placeholder, textarea::placeholder {
+    color: #6b7280;
+  }
+
+  /* Hovers */
+  .hover\:bg-gray-50:hover { background-color: #111827 !important; }
+  .hover\:bg-gray-100:hover { background-color: #1f2937 !important; }
+  .hover\:bg-gray-300:hover { background-color: #374151 !important; }
+  .hover\:bg-blue-50:hover { background-color: #1e293b !important; }
+  .hover\:bg-blue-100:hover { background-color: #1e3a8a !important; }
+
+  /* Material background area stays slightly lighter gray for contrast */
+  .bg-gray-100.p-4 { background-color: #0f172a !important; }
 }

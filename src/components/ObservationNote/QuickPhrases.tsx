@@ -3,10 +3,10 @@ import type { QuickPhrase } from '../../types';
 
 interface Props {
   phrases: QuickPhrase[];
-  onInsert: (text: string) => void;
+  onInsertLabel: (label: string) => void;
 }
 
-export const QuickPhrases: React.FC<Props> = ({ phrases, onInsert }) => {
+export const QuickPhrases: React.FC<Props> = ({ phrases, onInsertLabel }) => {
   const sorted = [...phrases].sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
@@ -14,10 +14,11 @@ export const QuickPhrases: React.FC<Props> = ({ phrases, onInsert }) => {
       {sorted.map((phrase) => (
         <button
           key={phrase.id}
-          onClick={() => onInsert(phrase.text + ' ')}
-          className="px-3 py-1.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-full text-sm hover:bg-gray-100 transition-colors"
+          onClick={() => onInsertLabel(phrase.text)}
+          className="px-3 py-1.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-full text-sm hover:bg-blue-50 hover:border-blue-300 transition-colors"
+          title={`この行のラベルを「${phrase.text}」に設定`}
         >
-          {phrase.text}
+          🏷️ {phrase.text}
         </button>
       ))}
     </div>

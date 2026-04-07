@@ -31,6 +31,7 @@ export const SessionList: React.FC<Props> = ({
     subject: '',
     grade: '',
     teacher: '',
+    classStartTime: null,
   });
 
   const load = useCallback(async () => {
