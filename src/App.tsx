@@ -30,7 +30,7 @@ const App: React.FC = () => {
 
   // Drawing for the observation tab freehand area
   const drawing = useDrawing(settings.defaultPenColor, settings.defaultPenSize);
-  const svgRef = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Auto-save
   useAutoSave(session);
@@ -251,7 +251,7 @@ const App: React.FC = () => {
                     onStartStroke={drawing.startStroke}
                     onAddPoint={drawing.addPoint}
                     onEndStroke={drawing.endStroke}
-                    svgRef={svgRef}
+                    canvasRef={canvasRef}
                   />
                 </div>
               </div>

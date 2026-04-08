@@ -1,6 +1,6 @@
-import React, { useRef, useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import getStroke from 'perfect-freehand';
 import type { Stroke } from '../../types';
-import { StrokeRenderer } from './StrokeRenderer';
 
 interface Props {
   strokes: Stroke[];
@@ -12,14 +12,40 @@ interface Props {
   onAddPoint: (x: number, y: number, pressure: number) => void;
   onEndStroke: () => void;
   className?: string;
-  svgRef?: React.RefObject<SVGSVGElement | null>;
+  canvasRef?: React.RefObject<HTMLCanvasElement | null>;
+}
+
+const STROKE_OPTIONS = {
+  thinning: 0.5,
+  smoothing: 0.5,
+  streamline: 0.5,
+  simulatePressure: true,
+  last: true,
+};
+
+function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
+  const outline = getStroke(stroke.points, {
+    ...STROKE_OPTIONS,
+    size: stroke.size,
+  });
+  if (!outline || outline.length < 2) return;
+  ctx.fillStyle = stroke.color;
+  const path = new Path2D();
+  path.moveTo(outline[0][0], outline[0][1]);
+  for (let i = 1; i < outline.length; i++) {
+    path.lineTo(outline[i][0], outline[i][1]);
+  }
+  path.closePath();
+  ctx.fill(path);
 }
 
 /**
- * 手書きキャンバス。
- * - ポインタキャプチャを使わずに document の pointermove/up をグローバルに聴く
- *   （UIロック防止／OSによる解除忘れを回避）
- * - SVG は親要素に対して 100% サイズ。描画座標は getBoundingClientRect + viewBox で一致
+ * HTMLCanvas 版の手書きキャンバス。
+ * - 確定済みストロークはオフスクリーンの committedCanvas に焼き込み、
+ *   描画中は「オフスクリーンを 1 回 drawImage + currentStroke のみ再描画」するので
+ *   ストローク数が増えてもフレームあたりのコストはほぼ一定。
+ * - DPR 対応でレティナでも綺麗。
+ * - ポインタキャプチャは使わず document レベルで listen（UIロック防止）。
  */
 export const DrawingCanvas: React.FC<Props> = ({
   strokes,
@@ -31,18 +57,24 @@ export const DrawingCanvas: React.FC<Props> = ({
   onAddPoint,
   onEndStroke,
   className = '',
-  svgRef,
+  canvasRef,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const internalSvgRef = useRef<SVGSVGElement>(null);
+  const internalCanvasRef = useRef<HTMLCanvasElement>(null);
+  const committedCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
 
-  // 親のレイアウトサイズを測って viewBox とストローク座標を揃える
+  // コンテナから測ったレイアウトサイズ (CSS px)
   const [size, setSize] = useState<{ w: number; h: number }>({
     w: width ?? 0,
     h: height ?? 0,
   });
 
+  const getCanvas = useCallback((): HTMLCanvasElement | null => {
+    return canvasRef?.current ?? internalCanvasRef.current;
+  }, [canvasRef]);
+
+  // サイズ測定
   useEffect(() => {
     if (width != null && height != null) {
       setSize({ w: width, h: height });
@@ -50,7 +82,6 @@ export const DrawingCanvas: React.FC<Props> = ({
     }
     const el = containerRef.current;
     if (!el) return;
-    // 初期サイズを即時反映
     const rect = el.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       setSize({ w: Math.floor(rect.width), h: Math.floor(rect.height) });
@@ -72,43 +103,122 @@ export const DrawingCanvas: React.FC<Props> = ({
     return () => ro.disconnect();
   }, [width, height]);
 
-  const getSvgEl = (): SVGSVGElement | null => {
-    return (svgRef?.current ?? internalSvgRef.current) ?? null;
-  };
+  // キャンバスサイズ（DPR 対応）とオフスクリーン確定キャンバスの初期化
+  useLayoutEffect(() => {
+    const canvas = getCanvas();
+    if (!canvas || size.w === 0 || size.h === 0) return;
 
-  const getPointerPos = useCallback(
-    (clientX: number, clientY: number, pressure: number) => {
-      const svg = getSvgEl();
-      if (!svg) return { x: 0, y: 0, pressure };
-      const rect = svg.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(size.w * dpr);
+    canvas.height = Math.floor(size.h * dpr);
+    canvas.style.width = `${size.w}px`;
+    canvas.style.height = `${size.h}px`;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }
+
+    if (!committedCanvasRef.current) {
+      committedCanvasRef.current = document.createElement('canvas');
+    }
+    const off = committedCanvasRef.current;
+    off.width = Math.floor(size.w * dpr);
+    off.height = Math.floor(size.h * dpr);
+    const offCtx = off.getContext('2d');
+    if (offCtx) {
+      offCtx.setTransform(1, 0, 0, 1, 0, 0);
+      offCtx.scale(dpr, dpr);
+      offCtx.lineCap = 'round';
+      offCtx.lineJoin = 'round';
+      offCtx.clearRect(0, 0, size.w, size.h);
+      for (const s of strokes) drawStroke(offCtx, s);
+    }
+
+    // メインキャンバスに確定層をコピー（currentStroke はまだ無い前提）
+    if (ctx && off) {
+      ctx.clearRect(0, 0, size.w, size.h);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(off, 0, 0);
+      ctx.restore();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [size.w, size.h]);
+
+  // strokes 配列が変わったら確定層を再構築
+  useLayoutEffect(() => {
+    const off = committedCanvasRef.current;
+    if (!off) return;
+    const ctx = off.getContext('2d');
+    if (!ctx || size.w === 0 || size.h === 0) return;
+    ctx.clearRect(0, 0, size.w, size.h);
+    for (const s of strokes) drawStroke(ctx, s);
+
+    // メインも再描画
+    const canvas = getCanvas();
+    if (canvas) {
+      const mctx = canvas.getContext('2d');
+      if (mctx) {
+        mctx.clearRect(0, 0, size.w, size.h);
+        mctx.save();
+        mctx.setTransform(1, 0, 0, 1, 0, 0);
+        mctx.drawImage(off, 0, 0);
+        mctx.restore();
+        if (currentStroke) drawStroke(mctx, currentStroke);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strokes]);
+
+  // currentStroke が変わるたびにメインだけ再描画（確定層はそのまま）
+  useLayoutEffect(() => {
+    const canvas = getCanvas();
+    const off = committedCanvasRef.current;
+    if (!canvas || !off || size.w === 0 || size.h === 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, size.w, size.h);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(off, 0, 0);
+    ctx.restore();
+    if (currentStroke) drawStroke(ctx, currentStroke);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStroke]);
+
+  // ポインタ座標取得（CSS px, キャンバス原点基準）
+  const getPos = useCallback(
+    (clientX: number, clientY: number) => {
+      const canvas = getCanvas();
+      if (!canvas) return { x: 0, y: 0 };
+      const rect = canvas.getBoundingClientRect();
       return {
         x: clientX - rect.left,
         y: clientY - rect.top,
-        pressure: pressure || 0.5,
       };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [getCanvas]
   );
 
-  // document レベルの pointermove/up ハンドラ
+  // document レベルで move/up を聴く
   useEffect(() => {
     if (!isDrawingMode) return;
 
     const onMove = (e: PointerEvent) => {
       if (!isDrawingRef.current) return;
       e.preventDefault();
-      const { x, y, pressure } = getPointerPos(e.clientX, e.clientY, e.pressure);
-      onAddPoint(x, y, pressure);
+      const { x, y } = getPos(e.clientX, e.clientY);
+      onAddPoint(x, y, e.pressure || 0.5);
     };
-
     const onUp = (e: PointerEvent) => {
       if (!isDrawingRef.current) return;
       e.preventDefault();
       isDrawingRef.current = false;
       onEndStroke();
     };
-
     const onCancel = () => {
       if (!isDrawingRef.current) return;
       isDrawingRef.current = false;
@@ -118,7 +228,6 @@ export const DrawingCanvas: React.FC<Props> = ({
     document.addEventListener('pointermove', onMove, { passive: false });
     document.addEventListener('pointerup', onUp, { passive: false });
     document.addEventListener('pointercancel', onCancel);
-    // 万一ブラウザがフォーカスを失ったら確実に解除
     window.addEventListener('blur', onCancel);
 
     return () => {
@@ -126,13 +235,12 @@ export const DrawingCanvas: React.FC<Props> = ({
       document.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointercancel', onCancel);
       window.removeEventListener('blur', onCancel);
-      // 描画中にモードが切り替わった場合も強制終了
       if (isDrawingRef.current) {
         isDrawingRef.current = false;
         onEndStroke();
       }
     };
-  }, [isDrawingMode, getPointerPos, onAddPoint, onEndStroke]);
+  }, [isDrawingMode, getPos, onAddPoint, onEndStroke]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -140,10 +248,10 @@ export const DrawingCanvas: React.FC<Props> = ({
       e.preventDefault();
       e.stopPropagation();
       isDrawingRef.current = true;
-      const { x, y, pressure } = getPointerPos(e.clientX, e.clientY, e.pressure);
-      onStartStroke(x, y, pressure);
+      const { x, y } = getPos(e.clientX, e.clientY);
+      onStartStroke(x, y, e.pressure || 0.5);
     },
-    [isDrawingMode, getPointerPos, onStartStroke]
+    [isDrawingMode, getPos, onStartStroke]
   );
 
   return (
@@ -157,24 +265,15 @@ export const DrawingCanvas: React.FC<Props> = ({
         userSelect: isDrawingMode ? 'none' : 'auto',
       }}
     >
-      <svg
-        ref={svgRef ?? internalSvgRef}
-        width="100%"
-        height="100%"
-        viewBox={`0 0 ${size.w || 1} ${size.h || 1}`}
-        preserveAspectRatio="none"
-        className="bg-transparent block"
+      <canvas
+        ref={canvasRef ?? internalCanvasRef}
+        className="block"
         style={{
-          touchAction: isDrawingMode ? 'none' : 'auto',
           position: 'absolute',
           inset: 0,
+          touchAction: isDrawingMode ? 'none' : 'auto',
         }}
-      >
-        {strokes.map((stroke) => (
-          <StrokeRenderer key={stroke.id} stroke={stroke} />
-        ))}
-        {currentStroke && <StrokeRenderer stroke={currentStroke} />}
-      </svg>
+      />
     </div>
   );
 };
