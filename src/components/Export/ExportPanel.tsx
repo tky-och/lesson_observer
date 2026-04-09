@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import type { Session } from '../../types';
 import { exportJSON, exportMarkdown, exportText, exportZip } from '../../utils/exportUtils';
+import { exportPdf } from '../../utils/pdfExport';
 import { importSessionFromFile } from '../../utils/importUtils';
 
 interface Props {
@@ -13,7 +14,7 @@ export const ExportPanel: React.FC<Props> = ({ session, onClose, onImport }) => 
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleExport = async (type: 'json' | 'markdown' | 'text' | 'zip') => {
+  const handleExport = async (type: 'json' | 'markdown' | 'text' | 'zip' | 'pdf') => {
     setBusy(true);
     try {
       switch (type) {
@@ -28,6 +29,9 @@ export const ExportPanel: React.FC<Props> = ({ session, onClose, onImport }) => 
           break;
         case 'zip':
           await exportZip(session);
+          break;
+        case 'pdf':
+          await exportPdf(session);
           break;
       }
     } catch (e) {
@@ -96,6 +100,15 @@ export const ExportPanel: React.FC<Props> = ({ session, onClose, onImport }) => 
           >
             <div className="font-medium text-sm">📋 JSON（.json）</div>
             <div className="text-xs text-gray-500 mt-1">構造化データとして保存（資料ファイルは含まず）</div>
+          </button>
+
+          <button
+            onClick={() => handleExport('pdf')}
+            disabled={busy}
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg text-left hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <div className="font-medium text-sm">📕 PDF（.pdf）</div>
+            <div className="text-xs text-gray-500 mt-1">観察メモ・手書き・資料をまとめてPDF化</div>
           </button>
 
           <button
