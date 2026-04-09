@@ -246,7 +246,7 @@ const App: React.FC = () => {
                 >
                   <DrawingCanvas
                     strokes={drawing.strokes}
-                    currentStroke={drawing.currentStroke}
+                    currentStrokeRef={drawing.currentStrokeRef}
                     isDrawingMode={drawing.isDrawingMode}
                     onStartStroke={drawing.startStroke}
                     onAddPoint={drawing.addPoint}

@@ -138,7 +138,7 @@ export const AnnotationLayerView: React.FC<Props> = ({
               >
                 <DrawingCanvas
                   strokes={drawing.strokes}
-                  currentStroke={drawing.currentStroke}
+                  currentStrokeRef={drawing.currentStrokeRef}
                   isDrawingMode={drawing.isDrawingMode}
                   width={bgSize.w}
                   height={bgSize.h}

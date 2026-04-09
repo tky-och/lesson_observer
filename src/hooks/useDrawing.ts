@@ -2,20 +2,16 @@ import { useState, useCallback, useRef } from 'react';
 import type { Stroke } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
-export interface DrawingState {
-  strokes: Stroke[];
-  undoneStrokes: Stroke[];
-  currentStroke: Stroke | null;
-  penColor: string;
-  penSize: number;
-  isErasing: boolean;
-  isDrawingMode: boolean;
-}
-
+/**
+ * 手書き状態フック。
+ * 描画中の "currentStroke" は React state ではなく ref に保持し、
+ * pointermove ごとに配列を mutate（push）するだけで再レンダリングを起こさない。
+ * → DrawingCanvas は requestAnimationFrame ループで ref を読みつつ
+ *   imperative に再描画する。確定（endStroke）時のみ React state を更新。
+ */
 export function useDrawing(initialColor = '#000000', initialSize = 4) {
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [undoneStrokes, setUndoneStrokes] = useState<Stroke[]>([]);
-  const [currentStroke, setCurrentStroke] = useState<Stroke | null>(null);
   const [penColor, setPenColor] = useState(initialColor);
   const [penSize, setPenSize] = useState(initialSize);
   const [isErasing, setIsErasing] = useState(false);
@@ -25,35 +21,30 @@ export function useDrawing(initialColor = '#000000', initialSize = 4) {
 
   const startStroke = useCallback(
     (x: number, y: number, pressure: number = 0.5) => {
-      const stroke: Stroke = {
+      currentStrokeRef.current = {
         id: uuidv4(),
         points: [[x, y, pressure]],
         color: isErasing ? '#ffffff' : penColor,
         size: isErasing ? 20 : penSize,
         timestamp: Date.now(),
       };
-      currentStrokeRef.current = stroke;
-      setCurrentStroke(stroke);
     },
     [penColor, penSize, isErasing]
   );
 
+  // mutate in place — 一切の再レンダリングを起こさない
   const addPoint = useCallback((x: number, y: number, pressure: number = 0.5) => {
-    if (!currentStrokeRef.current) return;
-    currentStrokeRef.current = {
-      ...currentStrokeRef.current,
-      points: [...currentStrokeRef.current.points, [x, y, pressure]],
-    };
-    setCurrentStroke({ ...currentStrokeRef.current });
+    const cur = currentStrokeRef.current;
+    if (!cur) return;
+    cur.points.push([x, y, pressure]);
   }, []);
 
   const endStroke = useCallback(() => {
-    if (currentStrokeRef.current) {
-      setStrokes((prev) => [...prev, currentStrokeRef.current!]);
-      setUndoneStrokes([]);
-      currentStrokeRef.current = null;
-      setCurrentStroke(null);
-    }
+    const finished = currentStrokeRef.current;
+    if (!finished) return;
+    currentStrokeRef.current = null;
+    setStrokes((prev) => [...prev, finished]);
+    setUndoneStrokes([]);
   }, []);
 
   const undo = useCallback(() => {
@@ -77,7 +68,6 @@ export function useDrawing(initialColor = '#000000', initialSize = 4) {
   const clearAll = useCallback(() => {
     setStrokes([]);
     setUndoneStrokes([]);
-    setCurrentStroke(null);
     currentStrokeRef.current = null;
   }, []);
 
@@ -89,7 +79,7 @@ export function useDrawing(initialColor = '#000000', initialSize = 4) {
   return {
     strokes,
     undoneStrokes,
-    currentStroke,
+    currentStrokeRef,
     penColor,
     penSize,
     isErasing,

@@ -4,7 +4,8 @@ import type { Stroke } from '../../types';
 
 interface Props {
   strokes: Stroke[];
-  currentStroke: Stroke | null;
+  /** 描画中のストロークを mutate で更新する ref（useDrawing から渡す） */
+  currentStrokeRef: React.RefObject<Stroke | null>;
   isDrawingMode: boolean;
   width?: number;
   height?: number;
@@ -20,12 +21,16 @@ const STROKE_OPTIONS = {
   smoothing: 0.5,
   streamline: 0.5,
   simulatePressure: true,
-  last: true,
+  last: false,
 };
 
-function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
+function drawStroke(
+  ctx: CanvasRenderingContext2D,
+  stroke: Stroke,
+  options: typeof STROKE_OPTIONS = STROKE_OPTIONS
+) {
   const outline = getStroke(stroke.points, {
-    ...STROKE_OPTIONS,
+    ...options,
     size: stroke.size,
   });
   if (!outline || outline.length < 2) return;
@@ -41,15 +46,13 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
 
 /**
  * HTMLCanvas 版の手書きキャンバス。
- * - 確定済みストロークはオフスクリーンの committedCanvas に焼き込み、
- *   描画中は「オフスクリーンを 1 回 drawImage + currentStroke のみ再描画」するので
- *   ストローク数が増えてもフレームあたりのコストはほぼ一定。
- * - DPR 対応でレティナでも綺麗。
- * - ポインタキャプチャは使わず document レベルで listen（UIロック防止）。
+ * - 確定済みストロークはオフスクリーンに焼き込み、描画中は drawImage(offscreen) + currentStroke のみ。
+ * - 描画中は React state を一切更新せず、requestAnimationFrame ループで currentStrokeRef を読んで再描画。
+ * - これによりストローク数や点数に関わらず1フレームのコストはほぼ一定。
  */
 export const DrawingCanvas: React.FC<Props> = ({
   strokes,
-  currentStroke,
+  currentStrokeRef,
   isDrawingMode,
   width,
   height,
@@ -63,18 +66,23 @@ export const DrawingCanvas: React.FC<Props> = ({
   const internalCanvasRef = useRef<HTMLCanvasElement>(null);
   const committedCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
 
-  // コンテナから測ったレイアウトサイズ (CSS px)
   const [size, setSize] = useState<{ w: number; h: number }>({
     w: width ?? 0,
     h: height ?? 0,
   });
+  // size を ref としても保持しておく（rAF ループが現在値を参照するため）
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
 
   const getCanvas = useCallback((): HTMLCanvasElement | null => {
     return canvasRef?.current ?? internalCanvasRef.current;
   }, [canvasRef]);
 
+  // ---------------------------------------------------------------
   // サイズ測定
+  // ---------------------------------------------------------------
   useEffect(() => {
     if (width != null && height != null) {
       setSize({ w: width, h: height });
@@ -103,7 +111,49 @@ export const DrawingCanvas: React.FC<Props> = ({
     return () => ro.disconnect();
   }, [width, height]);
 
-  // キャンバスサイズ（DPR 対応）とオフスクリーン確定キャンバスの初期化
+  // ---------------------------------------------------------------
+  // 描画ヘルパー
+  // ---------------------------------------------------------------
+  const redrawCommittedOffscreen = useCallback(() => {
+    if (!committedCanvasRef.current) return;
+    const off = committedCanvasRef.current;
+    const ctx = off.getContext('2d');
+    if (!ctx) return;
+    const { w, h } = sizeRef.current;
+    if (w === 0 || h === 0) return;
+    ctx.clearRect(0, 0, w, h);
+    for (const s of strokes) drawStroke(ctx, s);
+  }, [strokes]);
+
+  const blitToMain = useCallback(() => {
+    const canvas = getCanvas();
+    const off = committedCanvasRef.current;
+    if (!canvas || !off) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const { w, h } = sizeRef.current;
+    if (w === 0 || h === 0) return;
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(off, 0, 0);
+    ctx.restore();
+  }, [getCanvas]);
+
+  const drawCurrentOnTop = useCallback(() => {
+    const canvas = getCanvas();
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const cur = currentStrokeRef.current;
+    if (cur && cur.points.length > 0) {
+      drawStroke(ctx, cur);
+    }
+  }, [getCanvas, currentStrokeRef]);
+
+  // ---------------------------------------------------------------
+  // キャンバスのサイズ確定 + DPR（size 変更時）
+  // ---------------------------------------------------------------
   useLayoutEffect(() => {
     const canvas = getCanvas();
     if (!canvas || size.w === 0 || size.h === 0) return;
@@ -133,63 +183,36 @@ export const DrawingCanvas: React.FC<Props> = ({
       offCtx.scale(dpr, dpr);
       offCtx.lineCap = 'round';
       offCtx.lineJoin = 'round';
-      offCtx.clearRect(0, 0, size.w, size.h);
-      for (const s of strokes) drawStroke(offCtx, s);
     }
 
-    // メインキャンバスに確定層をコピー（currentStroke はまだ無い前提）
-    if (ctx && off) {
-      ctx.clearRect(0, 0, size.w, size.h);
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(off, 0, 0);
-      ctx.restore();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size.w, size.h]);
+    redrawCommittedOffscreen();
+    blitToMain();
+    drawCurrentOnTop();
+  }, [size.w, size.h, redrawCommittedOffscreen, blitToMain, drawCurrentOnTop]);
 
   // strokes 配列が変わったら確定層を再構築
   useLayoutEffect(() => {
-    const off = committedCanvasRef.current;
-    if (!off) return;
-    const ctx = off.getContext('2d');
-    if (!ctx || size.w === 0 || size.h === 0) return;
-    ctx.clearRect(0, 0, size.w, size.h);
-    for (const s of strokes) drawStroke(ctx, s);
+    redrawCommittedOffscreen();
+    blitToMain();
+    drawCurrentOnTop();
+  }, [strokes, redrawCommittedOffscreen, blitToMain, drawCurrentOnTop]);
 
-    // メインも再描画
-    const canvas = getCanvas();
-    if (canvas) {
-      const mctx = canvas.getContext('2d');
-      if (mctx) {
-        mctx.clearRect(0, 0, size.w, size.h);
-        mctx.save();
-        mctx.setTransform(1, 0, 0, 1, 0, 0);
-        mctx.drawImage(off, 0, 0);
-        mctx.restore();
-        if (currentStroke) drawStroke(mctx, currentStroke);
-      }
+  // ---------------------------------------------------------------
+  // rAF ループ：描画中のみ動く
+  // ---------------------------------------------------------------
+  const tick = useCallback(() => {
+    if (!isDrawingRef.current) {
+      rafRef.current = null;
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strokes]);
+    blitToMain();
+    drawCurrentOnTop();
+    rafRef.current = requestAnimationFrame(tick);
+  }, [blitToMain, drawCurrentOnTop]);
 
-  // currentStroke が変わるたびにメインだけ再描画（確定層はそのまま）
-  useLayoutEffect(() => {
-    const canvas = getCanvas();
-    const off = committedCanvasRef.current;
-    if (!canvas || !off || size.w === 0 || size.h === 0) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, size.w, size.h);
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(off, 0, 0);
-    ctx.restore();
-    if (currentStroke) drawStroke(ctx, currentStroke);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStroke]);
-
-  // ポインタ座標取得（CSS px, キャンバス原点基準）
+  // ---------------------------------------------------------------
+  // ポインタ座標
+  // ---------------------------------------------------------------
   const getPos = useCallback(
     (clientX: number, clientY: number) => {
       const canvas = getCanvas();
@@ -203,7 +226,9 @@ export const DrawingCanvas: React.FC<Props> = ({
     [getCanvas]
   );
 
+  // ---------------------------------------------------------------
   // document レベルで move/up を聴く
+  // ---------------------------------------------------------------
   useEffect(() => {
     if (!isDrawingMode) return;
 
@@ -217,11 +242,19 @@ export const DrawingCanvas: React.FC<Props> = ({
       if (!isDrawingRef.current) return;
       e.preventDefault();
       isDrawingRef.current = false;
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       onEndStroke();
     };
     const onCancel = () => {
       if (!isDrawingRef.current) return;
       isDrawingRef.current = false;
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       onEndStroke();
     };
 
@@ -235,6 +268,10 @@ export const DrawingCanvas: React.FC<Props> = ({
       document.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointercancel', onCancel);
       window.removeEventListener('blur', onCancel);
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       if (isDrawingRef.current) {
         isDrawingRef.current = false;
         onEndStroke();
@@ -250,8 +287,12 @@ export const DrawingCanvas: React.FC<Props> = ({
       isDrawingRef.current = true;
       const { x, y } = getPos(e.clientX, e.clientY);
       onStartStroke(x, y, e.pressure || 0.5);
+      // rAF ループ開始
+      if (rafRef.current == null) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
     },
-    [isDrawingMode, getPos, onStartStroke]
+    [isDrawingMode, getPos, onStartStroke, tick]
   );
 
   return (
