@@ -68,7 +68,8 @@ export async function exportPdf(session: Session): Promise<void> {
 
     if (mat.type === 'image') {
       try {
-        const dataUrl = arrayBufferToDataUrl(mat.data, 'image/png');
+        const mime = sniffImageMime(mat.data);
+        const dataUrl = arrayBufferToDataUrl(mat.data, mime);
         const img = await loadImage(dataUrl);
         addPageIfNeeded();
         addSectionTitle(pdf, `資料: ${mat.name}`, margin, pageW);
@@ -87,18 +88,47 @@ export async function exportPdf(session: Session): Promise<void> {
         }
       } catch (e) {
         console.warn('failed to embed image material', mat.name, e);
+        // フォールバック: 失敗を PDF 内で可視化する
+        try {
+          addPageIfNeeded();
+          addSectionTitle(pdf, `資料: ${mat.name} (読み込み失敗)`, margin, pageW);
+        } catch {
+          /* noop */
+        }
       }
     } else if (mat.type === 'pdf') {
-      // 先頭ページだけレンダリング
       try {
-        const pdfPageCanvas = await renderPdfFirstPageToCanvas(mat.data);
-        if (pdfPageCanvas) {
+        const pages = await renderPdfAllPagesToCanvas(mat.data);
+        for (let i = 0; i < pages.length; i++) {
+          const pageCanvas = pages[i];
+          const pageNum = i + 1;
           addPageIfNeeded();
-          addSectionTitle(pdf, `資料(PDF): ${mat.name}`, margin, pageW);
-          fitCanvasToPage(pdf, pdfPageCanvas, margin, pageW, pageH, margin + 36);
+          addSectionTitle(pdf, `資料(PDF): ${mat.name} p.${pageNum}`, margin, pageW);
+          fitCanvasToPage(pdf, pageCanvas, margin, pageW, pageH, margin + 36);
+
+          const annots = mat.annotations[pageNum] || [];
+          if (annots.length > 0) {
+            const annotCanvas = renderStrokesToCanvasWithBg(annots, pageCanvas);
+            if (annotCanvas) {
+              addPageIfNeeded();
+              addSectionTitle(
+                pdf,
+                `資料(PDF) + アノテーション: ${mat.name} p.${pageNum}`,
+                margin,
+                pageW
+              );
+              fitCanvasToPage(pdf, annotCanvas, margin, pageW, pageH, margin + 36);
+            }
+          }
         }
       } catch (e) {
         console.warn('failed to render pdf material', mat.name, e);
+        try {
+          addPageIfNeeded();
+          addSectionTitle(pdf, `資料(PDF): ${mat.name} (読み込み失敗)`, margin, pageW);
+        } catch {
+          /* noop */
+        }
       }
     }
   }
@@ -249,6 +279,34 @@ function renderStrokesToCanvasWithBg(
 // 画像 / PDF 資料
 // ---------------------------------------------------------------------------
 
+/** バイト先頭から画像フォーマットを推定する */
+function sniffImageMime(buf: ArrayBuffer): string {
+  const u = new Uint8Array(buf);
+  if (u.length >= 8 && u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4e && u[3] === 0x47)
+    return 'image/png';
+  if (u.length >= 3 && u[0] === 0xff && u[1] === 0xd8 && u[2] === 0xff) return 'image/jpeg';
+  if (u.length >= 6 && u[0] === 0x47 && u[1] === 0x49 && u[2] === 0x46 && u[3] === 0x38)
+    return 'image/gif';
+  if (
+    u.length >= 12 &&
+    u[0] === 0x52 &&
+    u[1] === 0x49 &&
+    u[2] === 0x46 &&
+    u[3] === 0x46 &&
+    u[8] === 0x57 &&
+    u[9] === 0x45 &&
+    u[10] === 0x42 &&
+    u[11] === 0x50
+  )
+    return 'image/webp';
+  // SVG (テキストで始まる)
+  if (u.length >= 5) {
+    const head = String.fromCharCode(u[0], u[1], u[2], u[3], u[4]).toLowerCase();
+    if (head.startsWith('<?xml') || head.startsWith('<svg')) return 'image/svg+xml';
+  }
+  return 'image/png';
+}
+
 function arrayBufferToDataUrl(buf: ArrayBuffer, mime: string): string {
   const bytes = new Uint8Array(buf);
   let bin = '';
@@ -277,20 +335,25 @@ function imageToCanvas(img: HTMLImageElement): HTMLCanvasElement {
   return canvas;
 }
 
-async function renderPdfFirstPageToCanvas(data: ArrayBuffer): Promise<HTMLCanvasElement | null> {
-  // react-pdf 経由で pdfjs にアクセス
+async function renderPdfAllPagesToCanvas(data: ArrayBuffer): Promise<HTMLCanvasElement[]> {
   const { pdfjs } = await import('react-pdf');
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(data) });
+  // ArrayBuffer は pdfjs が detach するので複製して渡す
+  const buf = data.slice(0);
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buf) });
   const doc = await loadingTask.promise;
-  const page = await doc.getPage(1);
-  const viewport = page.getViewport({ scale: 2 });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-  return canvas;
+  const canvases: HTMLCanvasElement[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) continue;
+    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+    canvases.push(canvas);
+  }
+  return canvases;
 }
 
 // ---------------------------------------------------------------------------
