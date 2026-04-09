@@ -63,14 +63,33 @@ export async function exportPdf(session: Session): Promise<void> {
   }
 
   // 3) 資料
+  console.log('[pdfExport] materials count:', session.materials.length);
   for (const mat of session.materials) {
-    if (!mat.data || mat.data.byteLength === 0) continue;
+    // runtime 時に Uint8Array が入っている可能性があるため any 経由で安全にチェック
+    const rawData: unknown = mat.data;
+    const dataLen =
+      rawData instanceof ArrayBuffer
+        ? rawData.byteLength
+        : rawData instanceof Uint8Array
+          ? rawData.byteLength
+          : 0;
+    console.log('[pdfExport] material:', mat.name, 'type:', mat.type, 'dataLen:', dataLen);
+    if (!rawData || dataLen === 0) {
+      console.warn('[pdfExport] skipping material with no data:', mat.name);
+      continue;
+    }
+
+    // ArrayBuffer に正規化する（Uint8Array が混入していることがある）
+    const rawBuf: ArrayBuffer =
+      rawData instanceof ArrayBuffer
+        ? rawData
+        : rawData instanceof Uint8Array
+          ? (rawData.buffer as ArrayBuffer).slice(rawData.byteOffset, rawData.byteOffset + rawData.byteLength)
+          : rawData as ArrayBuffer;
 
     if (mat.type === 'image') {
       try {
-        const mime = sniffImageMime(mat.data);
-        const dataUrl = arrayBufferToDataUrl(mat.data, mime);
-        const img = await loadImage(dataUrl);
+        const img = await loadImageFromBuffer(rawBuf);
         addPageIfNeeded();
         addSectionTitle(pdf, `資料: ${mat.name}`, margin, pageW);
         const imgCanvas = imageToCanvas(img);
@@ -86,9 +105,9 @@ export async function exportPdf(session: Session): Promise<void> {
             fitCanvasToPage(pdf, annotCanvas, margin, pageW, pageH, margin + 36);
           }
         }
+        console.log('[pdfExport] image material added:', mat.name);
       } catch (e) {
-        console.warn('failed to embed image material', mat.name, e);
-        // フォールバック: 失敗を PDF 内で可視化する
+        console.error('[pdfExport] failed to embed image material', mat.name, e);
         try {
           addPageIfNeeded();
           addSectionTitle(pdf, `資料: ${mat.name} (読み込み失敗)`, margin, pageW);
@@ -98,7 +117,8 @@ export async function exportPdf(session: Session): Promise<void> {
       }
     } else if (mat.type === 'pdf') {
       try {
-        const pages = await renderPdfAllPagesToCanvas(mat.data);
+        const pages = await renderPdfAllPagesToCanvas(rawBuf);
+        console.log('[pdfExport] pdf material pages:', pages.length, mat.name);
         for (let i = 0; i < pages.length; i++) {
           const pageCanvas = pages[i];
           const pageNum = i + 1;
@@ -122,7 +142,7 @@ export async function exportPdf(session: Session): Promise<void> {
           }
         }
       } catch (e) {
-        console.warn('failed to render pdf material', mat.name, e);
+        console.error('[pdfExport] failed to render pdf material', mat.name, e);
         try {
           addPageIfNeeded();
           addSectionTitle(pdf, `資料(PDF): ${mat.name} (読み込み失敗)`, margin, pageW);
@@ -299,7 +319,6 @@ function sniffImageMime(buf: ArrayBuffer): string {
     u[11] === 0x50
   )
     return 'image/webp';
-  // SVG (テキストで始まる)
   if (u.length >= 5) {
     const head = String.fromCharCode(u[0], u[1], u[2], u[3], u[4]).toLowerCase();
     if (head.startsWith('<?xml') || head.startsWith('<svg')) return 'image/svg+xml';
@@ -307,22 +326,22 @@ function sniffImageMime(buf: ArrayBuffer): string {
   return 'image/png';
 }
 
-function arrayBufferToDataUrl(buf: ArrayBuffer, mime: string): string {
-  const bytes = new Uint8Array(buf);
-  let bin = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return `data:${mime};base64,${btoa(bin)}`;
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
+/** Blob URL 経由で画像を読み込む（base64 data URL より確実に動作する） */
+function loadImageFromBuffer(buf: ArrayBuffer): Promise<HTMLImageElement> {
+  const mime = sniffImageMime(buf);
+  const blob = new Blob([buf], { type: mime });
+  const url = URL.createObjectURL(blob);
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`Image decode failed (mime=${mime}, size=${buf.byteLength}): ${e}`));
+    };
+    img.src = url;
   });
 }
 

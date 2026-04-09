@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { MaterialTab } from '../../types';
 import { DrawingCanvas } from '../Handwriting/DrawingCanvas';
 import { DrawingToolbar } from '../Handwriting/DrawingToolbar';
@@ -76,12 +76,15 @@ export const AnnotationLayerView: React.FC<Props> = ({
     return () => ro.disconnect();
   }, [material.id, material.currentPage, material.type]);
 
-  const handlePageChange = (page: number) => {
-    onUpdate({
-      ...material,
-      currentPage: page,
-    });
-  };
+  const handlePageChange = useCallback(
+    (page: number) => {
+      onUpdate({
+        ...material,
+        currentPage: page,
+      });
+    },
+    [material, onUpdate]
+  );
 
   return (
     <div className="flex flex-col h-full">
