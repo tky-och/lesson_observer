@@ -98,7 +98,7 @@ export const SessionList: React.FC<Props> = ({
             >
               {hasFSHandle
                 ? '💾 保存先フォルダを変更'
-                : '📁 保存先フォルダを選択（Google Drive/OneDrive対応）'}
+                : '📁 保存先フォルダを選択'}
             </button>
           </div>
         )}

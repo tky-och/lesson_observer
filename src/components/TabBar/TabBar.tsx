@@ -2,9 +2,12 @@ import React, { useState, useRef, useCallback } from 'react';
 import type { MaterialTab } from '../../types';
 
 interface Props {
-  activeTab: string; // 'observation' | material id
+  activeTab: string; // 'observation' | 'handwriting' | material id
+  secondaryTab: string | null;
   materials: MaterialTab[];
   onTabChange: (tabId: string) => void;
+  onOpenInSecondary: (tabId: string) => void;
+  onCloseSecondary: () => void;
   onAddMaterial: (file: File) => void;
   onRenameMaterial: (id: string, name: string) => void;
   onDeleteMaterial: (id: string) => void;
@@ -12,8 +15,11 @@ interface Props {
 
 export const TabBar: React.FC<Props> = ({
   activeTab,
+  secondaryTab,
   materials,
   onTabChange,
+  onOpenInSecondary,
+  onCloseSecondary,
   onAddMaterial,
   onRenameMaterial,
   onDeleteMaterial,
@@ -53,28 +59,64 @@ export const TabBar: React.FC<Props> = ({
   return (
     <div className="flex items-center bg-gray-50 border-b border-gray-200 overflow-x-auto">
       {/* Observation tab (always first) */}
-      <button
-        onClick={() => onTabChange('observation')}
-        className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+      <div
+        className={`flex items-center border-b-2 transition-colors ${
           activeTab === 'observation'
-            ? 'border-blue-600 text-blue-600 bg-white'
-            : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+            ? 'border-blue-600 bg-white'
+            : secondaryTab === 'observation'
+              ? 'border-blue-300 bg-blue-50'
+              : 'border-transparent hover:bg-gray-100'
         }`}
       >
-        📝 観察メモ
-      </button>
+        <button
+          onClick={() => onTabChange('observation')}
+          className={`px-4 py-3 text-sm font-medium whitespace-nowrap ${
+            activeTab === 'observation' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          📝 観察メモ
+          {secondaryTab === 'observation' && (
+            <span className="ml-1 text-[10px] text-blue-500">[右]</span>
+          )}
+        </button>
+        <button
+          onClick={() => onOpenInSecondary('observation')}
+          className="px-1 py-1 text-gray-400 hover:text-blue-600 text-xs"
+          title="右側に並べて表示"
+        >
+          ⇉
+        </button>
+      </div>
 
       {/* Handwriting tab (always second) */}
-      <button
-        onClick={() => onTabChange('handwriting')}
-        className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+      <div
+        className={`flex items-center border-b-2 transition-colors ${
           activeTab === 'handwriting'
-            ? 'border-blue-600 text-blue-600 bg-white'
-            : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+            ? 'border-blue-600 bg-white'
+            : secondaryTab === 'handwriting'
+              ? 'border-blue-300 bg-blue-50'
+              : 'border-transparent hover:bg-gray-100'
         }`}
       >
-        ✍️ 手書き
-      </button>
+        <button
+          onClick={() => onTabChange('handwriting')}
+          className={`px-4 py-3 text-sm font-medium whitespace-nowrap ${
+            activeTab === 'handwriting' ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          ✍️ 手書き
+          {secondaryTab === 'handwriting' && (
+            <span className="ml-1 text-[10px] text-blue-500">[右]</span>
+          )}
+        </button>
+        <button
+          onClick={() => onOpenInSecondary('handwriting')}
+          className="px-1 py-1 text-gray-400 hover:text-blue-600 text-xs"
+          title="右側に並べて表示"
+        >
+          ⇉
+        </button>
+      </div>
 
       {/* Material tabs */}
       {materials.map((mat) => (
@@ -83,7 +125,9 @@ export const TabBar: React.FC<Props> = ({
           className={`flex items-center border-b-2 transition-colors ${
             activeTab === mat.id
               ? 'border-blue-600 bg-white'
-              : 'border-transparent hover:bg-gray-100'
+              : secondaryTab === mat.id
+                ? 'border-blue-300 bg-blue-50'
+                : 'border-transparent hover:bg-gray-100'
           }`}
         >
           <button
@@ -110,8 +154,21 @@ export const TabBar: React.FC<Props> = ({
             ) : (
               <>
                 {mat.type === 'pdf' ? '📄' : '🖼️'} {mat.name}
+                {secondaryTab === mat.id && (
+                  <span className="ml-1 text-[10px] text-blue-500">[右]</span>
+                )}
               </>
             )}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenInSecondary(mat.id);
+            }}
+            className="px-1 py-1 text-gray-400 hover:text-blue-600 text-xs"
+            title="右側に並べて表示"
+          >
+            ⇉
           </button>
           <button
             onClick={(e) => handleDeleteClick(e, mat.id)}
@@ -131,6 +188,18 @@ export const TabBar: React.FC<Props> = ({
       >
         ＋ 資料追加
       </button>
+
+      {/* Spacer + close split button */}
+      <div className="flex-1" />
+      {secondaryTab && (
+        <button
+          onClick={onCloseSecondary}
+          className="px-3 py-3 text-sm text-gray-500 hover:text-red-600 hover:bg-gray-100 transition-colors whitespace-nowrap border-l border-gray-200"
+          title="分割表示を解除"
+        >
+          ⇤ 分割解除
+        </button>
+      )}
 
       <input
         ref={fileInputRef}

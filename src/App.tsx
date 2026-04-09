@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [activeTab, setActiveTab] = useState<string>('observation');
+  const [secondaryTab, setSecondaryTab] = useState<string | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [hasFSHandle, setHasFSHandle] = useState(false);
 
@@ -128,7 +129,14 @@ const App: React.FC = () => {
       return { ...prev, materials: filtered, updatedAt: Date.now() };
     });
     setActiveTab('observation');
+    setSecondaryTab((prev) => (prev === id ? null : prev));
   }, []);
+
+  const handleOpenInSecondary = useCallback((tabId: string) => {
+    setSecondaryTab((prev) => (prev === tabId ? null : tabId));
+  }, []);
+
+  const handleCloseSecondary = useCallback(() => setSecondaryTab(null), []);
 
   const handleUpdateMaterial = useCallback((updated: MaterialTab) => {
     setSession((prev) => {
@@ -180,7 +188,88 @@ const App: React.FC = () => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const activeMaterial = session?.materials.find((m) => m.id === activeTab);
+  const renderTabContent = (tabId: string) => {
+    if (!session) return null;
+    if (tabId === 'observation') {
+      return (
+        <div className="h-full overflow-auto">
+          <TextEditor
+            value={session.textNotes}
+            onChange={handleTextChange}
+            photos={photos}
+            onAddPhoto={handleAddPhoto}
+            onRemovePhoto={handleRemovePhoto}
+            quickPhrases={settings.quickPhrases}
+            classStartTime={session.metadata.classStartTime}
+            onClassStartTimeChange={handleClassStartTimeChange}
+          />
+        </div>
+      );
+    }
+    if (tabId === 'handwriting') {
+      return (
+        <div className="flex flex-col h-full">
+          <DrawingToolbar
+            penColor={drawing.penColor}
+            penSize={drawing.penSize}
+            isErasing={drawing.isErasing}
+            isDrawingMode={drawing.isDrawingMode}
+            canUndo={drawing.strokes.length > 0}
+            canRedo={drawing.undoneStrokes.length > 0}
+            onColorChange={drawing.setPenColor}
+            onSizeChange={drawing.setPenSize}
+            onToggleEraser={() => drawing.setIsErasing(!drawing.isErasing)}
+            onToggleDrawingMode={() => drawing.setIsDrawingMode(!drawing.isDrawingMode)}
+            onUndo={drawing.undo}
+            onRedo={drawing.redo}
+            onClear={() => {
+              if (window.confirm('手書きメモをすべて消去しますか？')) {
+                drawing.clearAll();
+              }
+            }}
+          />
+          <div
+            className="flex-1 overflow-hidden"
+            style={{ backgroundColor: '#ffffff' }}
+          >
+            <DrawingCanvas
+              strokes={drawing.strokes}
+              currentStrokeRef={drawing.currentStrokeRef}
+              isDrawingMode={drawing.isDrawingMode}
+              onStartStroke={drawing.startStroke}
+              onAddPoint={drawing.addPoint}
+              onEndStroke={drawing.endStroke}
+              canvasRef={tabId === activeTab ? canvasRef : undefined}
+            />
+          </div>
+        </div>
+      );
+    }
+    const mat = session.materials.find((m) => m.id === tabId);
+    if (mat) {
+      return (
+        <AnnotationLayerView
+          material={mat}
+          onUpdate={handleUpdateMaterial}
+          defaultPenColor={settings.defaultPenColor}
+          defaultPenSize={settings.defaultPenSize}
+        />
+      );
+    }
+    return (
+      <div className="flex items-center justify-center h-full text-gray-400">
+        タブを選択してください
+      </div>
+    );
+  };
+
+  const tabLabel = (tabId: string): string => {
+    if (tabId === 'observation') return '📝 観察メモ';
+    if (tabId === 'handwriting') return '✍️ 手書き';
+    const mat = session?.materials.find((m) => m.id === tabId);
+    if (mat) return `${mat.type === 'pdf' ? '📄' : '🖼️'} ${mat.name}`;
+    return '';
+  };
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -198,73 +287,42 @@ const App: React.FC = () => {
         <>
           <TabBar
             activeTab={activeTab}
+            secondaryTab={secondaryTab}
             materials={session.materials}
             onTabChange={setActiveTab}
+            onOpenInSecondary={handleOpenInSecondary}
+            onCloseSecondary={handleCloseSecondary}
             onAddMaterial={handleAddMaterial}
             onRenameMaterial={handleRenameMaterial}
             onDeleteMaterial={handleDeleteMaterial}
           />
 
-          <div className="flex-1 overflow-hidden">
-            {activeTab === 'observation' ? (
-              <div className="h-full overflow-auto">
-                <TextEditor
-                  value={session.textNotes}
-                  onChange={handleTextChange}
-                  photos={photos}
-                  onAddPhoto={handleAddPhoto}
-                  onRemovePhoto={handleRemovePhoto}
-                  quickPhrases={settings.quickPhrases}
-                  classStartTime={session.metadata.classStartTime}
-                  onClassStartTimeChange={handleClassStartTimeChange}
-                />
-              </div>
-            ) : activeTab === 'handwriting' ? (
-              <div className="flex flex-col h-full">
-                <DrawingToolbar
-                  penColor={drawing.penColor}
-                  penSize={drawing.penSize}
-                  isErasing={drawing.isErasing}
-                  isDrawingMode={drawing.isDrawingMode}
-                  canUndo={drawing.strokes.length > 0}
-                  canRedo={drawing.undoneStrokes.length > 0}
-                  onColorChange={drawing.setPenColor}
-                  onSizeChange={drawing.setPenSize}
-                  onToggleEraser={() => drawing.setIsErasing(!drawing.isErasing)}
-                  onToggleDrawingMode={() => drawing.setIsDrawingMode(!drawing.isDrawingMode)}
-                  onUndo={drawing.undo}
-                  onRedo={drawing.redo}
-                  onClear={() => {
-                    if (window.confirm('手書きメモをすべて消去しますか？')) {
-                      drawing.clearAll();
-                    }
-                  }}
-                />
-                <div
-                  className="flex-1 overflow-hidden"
-                  style={{ backgroundColor: '#ffffff' }}
-                >
-                  <DrawingCanvas
-                    strokes={drawing.strokes}
-                    currentStrokeRef={drawing.currentStrokeRef}
-                    isDrawingMode={drawing.isDrawingMode}
-                    onStartStroke={drawing.startStroke}
-                    onAddPoint={drawing.addPoint}
-                    onEndStroke={drawing.endStroke}
-                    canvasRef={canvasRef}
-                  />
+          <div className="flex-1 overflow-hidden flex">
+            <div className={secondaryTab ? 'w-1/2 h-full overflow-hidden border-r border-gray-300' : 'w-full h-full overflow-hidden'}>
+              {secondaryTab && (
+                <div className="px-3 py-1 text-xs font-medium text-gray-500 bg-gray-100 border-b border-gray-200">
+                  左: {tabLabel(activeTab)}
                 </div>
+              )}
+              <div className={secondaryTab ? 'h-[calc(100%-25px)]' : 'h-full'}>
+                {renderTabContent(activeTab)}
               </div>
-            ) : activeMaterial ? (
-              <AnnotationLayerView
-                material={activeMaterial}
-                onUpdate={handleUpdateMaterial}
-                defaultPenColor={settings.defaultPenColor}
-                defaultPenSize={settings.defaultPenSize}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full text-gray-400">
-                タブを選択してください
+            </div>
+            {secondaryTab && (
+              <div className="w-1/2 h-full overflow-hidden">
+                <div className="px-3 py-1 text-xs font-medium text-gray-500 bg-gray-100 border-b border-gray-200 flex items-center justify-between">
+                  <span>右: {tabLabel(secondaryTab)}</span>
+                  <button
+                    onClick={handleCloseSecondary}
+                    className="text-gray-400 hover:text-red-600"
+                    title="右ペインを閉じる"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="h-[calc(100%-25px)]">
+                  {renderTabContent(secondaryTab)}
+                </div>
               </div>
             )}
           </div>
