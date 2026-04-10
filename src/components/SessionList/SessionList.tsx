@@ -25,13 +25,19 @@ export const SessionList: React.FC<Props> = ({
   const [showNewForm, setShowNewForm] = useState(false);
   const [hasFSHandle, setHasFSHandle] = useState(false);
 
-  const [formData, setFormData] = useState<SessionMetadata>({
-    title: '',
-    observer: settings.observerName,
-    subject: '',
-    grade: '',
-    teacher: '',
-    classStartTime: null,
+  const [formData, setFormData] = useState<SessionMetadata>(() => {
+    const now = new Date();
+    const yyyy = String(now.getFullYear());
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return {
+      title: `${yyyy}${mm}${dd}`,
+      observer: settings.observerName,
+      subject: '',
+      grade: '',
+      teacher: '',
+      classStartTime: null,
+    };
   });
 
   const load = useCallback(async () => {
@@ -121,7 +127,7 @@ export const SessionList: React.FC<Props> = ({
                 <input
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="タイトル（例: 3年1組 理科 2026/04/15）"
+                  placeholder="タイトル（例: 20260410理科3A）"
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm col-span-2"
                 />
                 <input
