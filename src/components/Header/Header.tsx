@@ -8,6 +8,7 @@ interface Props {
   onOpenSettings: () => void;
   onOpenExport: () => void;
   onOpenSessionList: () => void;
+  onOpenHelp: () => void;
   isFileSystemSupported: boolean;
   hasFSHandle: boolean;
 }
@@ -18,6 +19,7 @@ export const Header: React.FC<Props> = ({
   onOpenSettings,
   onOpenExport,
   onOpenSessionList,
+  onOpenHelp,
   isFileSystemSupported,
   hasFSHandle,
 }) => {
@@ -66,6 +68,12 @@ export const Header: React.FC<Props> = ({
           className="px-3 py-2 text-sm bg-gray-50 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
         >
           ⚙️ 設定
+        </button>
+        <button
+          onClick={onOpenHelp}
+          className="px-3 py-2 text-sm bg-gray-50 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          ❓ 使い方
         </button>
       </div>
     </header>

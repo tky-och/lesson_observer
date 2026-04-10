@@ -14,6 +14,7 @@ import { AnnotationLayerView } from './components/MaterialView/AnnotationLayer';
 import { SessionList } from './components/SessionList/SessionList';
 import { Settings } from './components/Settings/Settings';
 import { ExportPanel } from './components/Export/ExportPanel';
+import { HelpModal } from './components/Help/HelpModal';
 
 const App: React.FC = () => {
   const storage = useStorage();
@@ -28,6 +29,7 @@ const App: React.FC = () => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   // Drawing for the observation tab freehand area
   const drawing = useDrawing(settings.defaultPenColor, settings.defaultPenSize);
@@ -279,6 +281,7 @@ const App: React.FC = () => {
         onOpenSettings={() => setShowSettings(true)}
         onOpenExport={() => session && setShowExport(true)}
         onOpenSessionList={() => setShowSessionList(true)}
+        onOpenHelp={() => setShowHelp(true)}
         isFileSystemSupported={storage.isFileSystemSupported}
         hasFSHandle={hasFSHandle}
       />
@@ -366,6 +369,7 @@ const App: React.FC = () => {
           onImport={handleImportSession}
         />
       )}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 };
