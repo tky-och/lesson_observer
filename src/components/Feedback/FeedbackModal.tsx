@@ -30,7 +30,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 //
 // 未設定の場合は GitHub Issues / コピー / mailto のフォールバック動作になる。
 // ---------------------------------------------------------------------------
-const FEEDBACK_ENDPOINT = ''; // 例: 'https://formspree.io/f/abcdwxyz'
+const FEEDBACK_ENDPOINT = 'https://formspree.io/f/mgorldra';
 
 // GitHub Issues フォールバック用 (サインインが必要)
 const GITHUB_REPO = 'tky-och/lesson_observer';
