@@ -79,7 +79,7 @@ export const Header: React.FC<Props> = ({
         </button>
         <button
           onClick={onOpenFeedback}
-          className="px-3 py-2 text-sm bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+          className="px-3 py-2 text-sm bg-gray-50 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
           title="ご意見・不具合報告・機能要望をお寄せください"
         >
           💡 ご意見
