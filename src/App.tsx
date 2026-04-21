@@ -15,6 +15,7 @@ import { SessionList } from './components/SessionList/SessionList';
 import { Settings } from './components/Settings/Settings';
 import { ExportPanel } from './components/Export/ExportPanel';
 import { HelpModal } from './components/Help/HelpModal';
+import { FeedbackModal } from './components/Feedback/FeedbackModal';
 
 const App: React.FC = () => {
   const storage = useStorage();
@@ -30,6 +31,7 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   // Drawing for the observation tab freehand area
   const drawing = useDrawing(settings.defaultPenColor, settings.defaultPenSize);
@@ -282,6 +284,7 @@ const App: React.FC = () => {
         onOpenExport={() => session && setShowExport(true)}
         onOpenSessionList={() => setShowSessionList(true)}
         onOpenHelp={() => setShowHelp(true)}
+        onOpenFeedback={() => setShowFeedback(true)}
         isFileSystemSupported={storage.isFileSystemSupported}
         hasFSHandle={hasFSHandle}
       />
@@ -370,6 +373,7 @@ const App: React.FC = () => {
         />
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </div>
   );
 };

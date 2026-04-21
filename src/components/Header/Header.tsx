@@ -9,6 +9,7 @@ interface Props {
   onOpenExport: () => void;
   onOpenSessionList: () => void;
   onOpenHelp: () => void;
+  onOpenFeedback: () => void;
   isFileSystemSupported: boolean;
   hasFSHandle: boolean;
 }
@@ -20,6 +21,7 @@ export const Header: React.FC<Props> = ({
   onOpenExport,
   onOpenSessionList,
   onOpenHelp,
+  onOpenFeedback,
   isFileSystemSupported,
   hasFSHandle,
 }) => {
@@ -74,6 +76,13 @@ export const Header: React.FC<Props> = ({
           className="px-3 py-2 text-sm bg-gray-50 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
         >
           ❓ 使い方
+        </button>
+        <button
+          onClick={onOpenFeedback}
+          className="px-3 py-2 text-sm bg-amber-50 text-amber-800 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+          title="ご意見・不具合報告・機能要望をお寄せください"
+        >
+          💡 ご意見
         </button>
       </div>
     </header>
