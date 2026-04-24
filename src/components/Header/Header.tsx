@@ -2,6 +2,8 @@ import React from 'react';
 import type { SessionMetadata } from '../../types';
 import { formatDateTime } from '../../utils/timestampUtils';
 
+export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+
 interface Props {
   metadata: SessionMetadata | null;
   sessionCreatedAt: number | null;
@@ -10,9 +12,19 @@ interface Props {
   onOpenSessionList: () => void;
   onOpenHelp: () => void;
   onOpenFeedback: () => void;
+  onSaveNow: () => void;
+  saveStatus: SaveStatus;
   isFileSystemSupported: boolean;
   hasFSHandle: boolean;
 }
+
+const SAVE_LABEL: Record<SaveStatus, string> = {
+  idle: '💾 保存',
+  dirty: '💾 保存',
+  saving: '💾 保存中…',
+  saved: '✅ 保存しました',
+  error: '⚠️ 保存失敗',
+};
 
 export const Header: React.FC<Props> = ({
   metadata,
@@ -22,9 +34,20 @@ export const Header: React.FC<Props> = ({
   onOpenSessionList,
   onOpenHelp,
   onOpenFeedback,
+  onSaveNow,
+  saveStatus,
   isFileSystemSupported,
   hasFSHandle,
 }) => {
+  const saveButtonClasses =
+    saveStatus === 'saved'
+      ? 'px-3 py-2 text-sm bg-green-50 text-green-700 border border-green-200 rounded-lg transition-colors'
+      : saveStatus === 'error'
+        ? 'px-3 py-2 text-sm bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors'
+        : saveStatus === 'dirty'
+          ? 'px-3 py-2 text-sm bg-blue-600 text-white border border-blue-600 rounded-lg hover:bg-blue-700 transition-colors'
+          : 'px-3 py-2 text-sm bg-gray-50 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors';
+
   return (
     <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4 flex-wrap">
       <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -53,6 +76,14 @@ export const Header: React.FC<Props> = ({
             {hasFSHandle ? '💾 フォルダ保存中' : '⚠️ 保存先未設定'}
           </span>
         )}
+        <button
+          onClick={onSaveNow}
+          disabled={saveStatus === 'saving'}
+          className={saveButtonClasses}
+          title="現在のセッションを即時保存"
+        >
+          {SAVE_LABEL[saveStatus]}
+        </button>
         <button
           onClick={onOpenSessionList}
           className="px-3 py-2 text-sm bg-gray-50 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"

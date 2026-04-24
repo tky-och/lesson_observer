@@ -95,6 +95,8 @@ function normalizeSession(raw: unknown): Session {
     teacher: metaRaw.teacher ?? '',
     classStartTime:
       typeof metaRaw.classStartTime === 'number' ? metaRaw.classStartTime : null,
+    classEndTime:
+      typeof metaRaw.classEndTime === 'number' ? metaRaw.classEndTime : null,
   };
 
   const materials: MaterialTab[] = Array.isArray(r.materials)
@@ -146,6 +148,7 @@ function makeEmptySession(title: string, textNotes: string): Session {
       grade: '',
       teacher: '',
       classStartTime: null,
+      classEndTime: null,
     },
     textNotes,
     freehandStrokes: [],

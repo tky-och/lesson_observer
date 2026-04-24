@@ -37,6 +37,7 @@ export const SessionList: React.FC<Props> = ({
       grade: '',
       teacher: '',
       classStartTime: null,
+      classEndTime: null,
     };
   });
 

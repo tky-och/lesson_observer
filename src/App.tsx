@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Session, MaterialTab, AppSettings } from './types';
+import type { Session, MaterialTab, AppSettings, SessionMetadata } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { useStorage } from './hooks/useStorage';
 import { useAutoSave } from './hooks/useAutoSave';
 import { useDrawing } from './hooks/useDrawing';
-import { Header } from './components/Header/Header';
+import { Header, type SaveStatus } from './components/Header/Header';
 import { TabBar } from './components/TabBar/TabBar';
 import { TextEditor } from './components/ObservationNote/TextEditor';
+import { MetadataEditor } from './components/ObservationNote/MetadataEditor';
 import { DrawingCanvas } from './components/Handwriting/DrawingCanvas';
 import { DrawingToolbar } from './components/Handwriting/DrawingToolbar';
 import { AnnotationLayerView } from './components/MaterialView/AnnotationLayer';
@@ -32,13 +33,27 @@ const App: React.FC = () => {
   const [showExport, setShowExport] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showMetaEdit, setShowMetaEdit] = useState(false);
+
+  // Save status
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const savedResetTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const initialLoadRef = useRef(true);
 
   // Drawing for the observation tab freehand area
   const drawing = useDrawing(settings.defaultPenColor, settings.defaultPenSize);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Auto-save
-  useAutoSave(session);
+  // Auto-save: when auto-save completes, reset the save status indicator
+  useAutoSave(
+    session,
+    useCallback(() => {
+      setSaveStatus((prev) => {
+        if (prev === 'saving') return prev; // manual save in flight — don't override
+        return 'idle';
+      });
+    }, [])
+  );
 
   // Load settings on mount, show session list if no session
   useEffect(() => {
@@ -54,9 +69,21 @@ const App: React.FC = () => {
       }
       const handle = await storage.getDirectoryHandle();
       setHasFSHandle(!!handle);
+      // Mark initial load complete on next tick so the session-change effect
+      // doesn't flag the initial population as "dirty".
+      setTimeout(() => {
+        initialLoadRef.current = false;
+      }, 0);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Track unsaved changes whenever session mutates after initial load
+  useEffect(() => {
+    if (initialLoadRef.current) return;
+    if (!session) return;
+    setSaveStatus((prev) => (prev === 'saving' ? prev : 'dirty'));
+  }, [session]);
 
   // Sync drawing strokes back to session
   useEffect(() => {
@@ -85,6 +112,47 @@ const App: React.FC = () => {
         : null
     );
   }, []);
+
+  const handleClassEndTimeChange = useCallback((t: number | null) => {
+    setSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            metadata: { ...prev.metadata, classEndTime: t },
+            updatedAt: Date.now(),
+          }
+        : null
+    );
+  }, []);
+
+  const handleUpdateMetadata = useCallback((updated: SessionMetadata) => {
+    setSession((prev) =>
+      prev ? { ...prev, metadata: updated, updatedAt: Date.now() } : null
+    );
+  }, []);
+
+  const handleSaveNow = useCallback(async () => {
+    if (!session) return;
+    if (savedResetTimerRef.current) {
+      clearTimeout(savedResetTimerRef.current);
+      savedResetTimerRef.current = undefined;
+    }
+    setSaveStatus('saving');
+    try {
+      await storage.saveSession(session);
+      setSaveStatus('saved');
+      savedResetTimerRef.current = setTimeout(() => {
+        setSaveStatus('idle');
+      }, 1500);
+    } catch (e) {
+      console.error('[save] manual save failed:', e);
+      setSaveStatus('error');
+      savedResetTimerRef.current = setTimeout(() => {
+        setSaveStatus('dirty');
+      }, 2500);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   const handleImportSession = useCallback(
     async (imported: Session) => {
@@ -204,8 +272,10 @@ const App: React.FC = () => {
             onAddPhoto={handleAddPhoto}
             onRemovePhoto={handleRemovePhoto}
             quickPhrases={settings.quickPhrases}
-            classStartTime={session.metadata.classStartTime}
+            metadata={session.metadata}
             onClassStartTimeChange={handleClassStartTimeChange}
+            onClassEndTimeChange={handleClassEndTimeChange}
+            onOpenMetadataEdit={() => setShowMetaEdit(true)}
           />
         </div>
       );
@@ -285,6 +355,8 @@ const App: React.FC = () => {
         onOpenSessionList={() => setShowSessionList(true)}
         onOpenHelp={() => setShowHelp(true)}
         onOpenFeedback={() => setShowFeedback(true)}
+        onSaveNow={handleSaveNow}
+        saveStatus={saveStatus}
         isFileSystemSupported={storage.isFileSystemSupported}
         hasFSHandle={hasFSHandle}
       />
@@ -374,6 +446,13 @@ const App: React.FC = () => {
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {showMetaEdit && session && (
+        <MetadataEditor
+          metadata={session.metadata}
+          onSave={handleUpdateMetadata}
+          onClose={() => setShowMetaEdit(false)}
+        />
+      )}
     </div>
   );
 };

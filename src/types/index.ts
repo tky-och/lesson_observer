@@ -5,6 +5,7 @@ export interface SessionMetadata {
   grade: string;
   teacher: string;
   classStartTime: number | null; // epoch ms — 授業開始時刻
+  classEndTime: number | null; // epoch ms — 授業終了時刻（タイマー停止）
 }
 
 export interface Stroke {

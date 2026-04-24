@@ -17,10 +17,16 @@ export function formatElapsed(startMs: number, nowMs: number = Date.now()): stri
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-/** タイムスタンプ挿入用の文字列。classStartTime があれば経過時刻、なければ時刻。 */
-export function getTimestampForInsert(classStartTime: number | null): string {
+/** タイムスタンプ挿入用の文字列。classStartTime があれば経過時刻、なければ時刻。
+ *  classEndTime があれば終了時刻基準の経過時間を返す（授業終了後に挿入しても
+ *  実時刻に戻らないようにするため）。 */
+export function getTimestampForInsert(
+  classStartTime: number | null,
+  classEndTime: number | null = null
+): string {
   if (classStartTime == null) return getClockTimestamp();
-  return formatElapsed(classStartTime);
+  const now = classEndTime ?? Date.now();
+  return formatElapsed(classStartTime, now);
 }
 
 export function formatDate(ts: number): string {

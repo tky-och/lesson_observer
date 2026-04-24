@@ -1,5 +1,5 @@
 import React, { useRef, useCallback } from 'react';
-import type { QuickPhrase } from '../../types';
+import type { QuickPhrase, SessionMetadata } from '../../types';
 import { TimestampButton } from './TimestampButton';
 import { QuickPhrases } from './QuickPhrases';
 import { PhotoAttach } from './PhotoAttach';
@@ -12,8 +12,10 @@ interface Props {
   onAddPhoto: (dataUrl: string) => void;
   onRemovePhoto: (index: number) => void;
   quickPhrases: QuickPhrase[];
-  classStartTime: number | null;
+  metadata: SessionMetadata;
   onClassStartTimeChange: (t: number | null) => void;
+  onClassEndTimeChange: (t: number | null) => void;
+  onOpenMetadataEdit: () => void;
 }
 
 export const TextEditor: React.FC<Props> = ({
@@ -23,8 +25,10 @@ export const TextEditor: React.FC<Props> = ({
   onAddPhoto,
   onRemovePhoto,
   quickPhrases,
-  classStartTime,
+  metadata,
   onClassStartTimeChange,
+  onClassEndTimeChange,
+  onOpenMetadataEdit,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -97,13 +101,40 @@ export const TextEditor: React.FC<Props> = ({
     [value, onChange]
   );
 
+  // メタ情報の一行サマリ
+  const metaSummary = [
+    metadata.title,
+    metadata.subject,
+    metadata.grade,
+    metadata.teacher ? `授業者: ${metadata.teacher}` : '',
+    metadata.observer ? `観察者: ${metadata.observer}` : '',
+  ]
+    .filter((s) => s && s.trim().length > 0)
+    .join(' / ');
+
   return (
     <div className="flex flex-col gap-3 p-4 h-full">
+      {/* Metadata summary + edit button */}
+      <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+        <div className="flex-1 min-w-0 text-xs text-gray-600 truncate">
+          {metaSummary || <span className="text-gray-400">授業情報が未設定です</span>}
+        </div>
+        <button
+          onClick={onOpenMetadataEdit}
+          className="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors whitespace-nowrap"
+          title="授業のタイトル・授業者・教科などを編集"
+        >
+          📝 授業情報を編集
+        </button>
+      </div>
+
       {/* Class start control */}
       <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-gray-100">
         <ClassStartControl
-          classStartTime={classStartTime}
-          onChange={onClassStartTimeChange}
+          classStartTime={metadata.classStartTime}
+          classEndTime={metadata.classEndTime}
+          onStartChange={onClassStartTimeChange}
+          onEndChange={onClassEndTimeChange}
         />
       </div>
 
@@ -111,7 +142,8 @@ export const TextEditor: React.FC<Props> = ({
       <div className="flex flex-wrap items-center gap-2">
         <TimestampButton
           onInsert={insertAtCursor}
-          classStartTime={classStartTime}
+          classStartTime={metadata.classStartTime}
+          classEndTime={metadata.classEndTime}
         />
         <QuickPhrases phrases={quickPhrases} onInsertLabel={insertLabel} />
       </div>
