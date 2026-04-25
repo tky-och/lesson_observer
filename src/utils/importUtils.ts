@@ -133,6 +133,9 @@ function normalizeSession(raw: unknown): Session {
       ? (r.freehandStrokes as Session['freehandStrokes'])
       : [],
     materials,
+    photos: Array.isArray(r.photos)
+      ? (r.photos as unknown[]).filter((p): p is string => typeof p === 'string')
+      : [],
   };
 }
 
@@ -153,5 +156,6 @@ function makeEmptySession(title: string, textNotes: string): Session {
     textNotes,
     freehandStrokes: [],
     materials: [],
+    photos: [],
   };
 }

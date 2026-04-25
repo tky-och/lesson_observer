@@ -24,8 +24,11 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [activeTab, setActiveTab] = useState<string>('observation');
   const [secondaryTab, setSecondaryTab] = useState<string | null>(null);
-  const [photos, setPhotos] = useState<string[]>([]);
   const [hasFSHandle, setHasFSHandle] = useState(false);
+  const [fsErrorNotice, setFsErrorNotice] = useState<string | null>(null);
+
+  // 写真は session.photos に保持する。読みやすさのために定数で参照する。
+  const photos = session?.photos ?? [];
 
   // Modal states
   const [showSessionList, setShowSessionList] = useState(false);
@@ -85,6 +88,27 @@ const App: React.FC = () => {
     setSaveStatus((prev) => (prev === 'saving' ? prev : 'dirty'));
   }, [session]);
 
+  // Flush pending FS saves when the tab is hidden or about to unload. Auto-save
+  // only handles IndexedDB; without this, changes within the last 2 s before
+  // closing the tab never reach the user's selected folder.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        storage.flushAllPendingFS().catch(() => {});
+      }
+    };
+    const onPageHide = () => {
+      storage.flushAllPendingFS().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Sync drawing strokes back to session
   useEffect(() => {
     if (session && drawing.strokes !== session.freehandStrokes) {
@@ -138,15 +162,41 @@ const App: React.FC = () => {
       savedResetTimerRef.current = undefined;
     }
     setSaveStatus('saving');
+    setFsErrorNotice(null);
     try {
-      await storage.saveSession(session);
-      setSaveStatus('saved');
+      // 手動保存では FS まで完全に書ききる（debounce を待たない）。
+      const result = await storage.saveSessionDetailed(session, { flushFs: true });
+
+      if (result.fsStatus === 'saved' || result.fsStatus === 'unsupported') {
+        setSaveStatus('saved');
+      } else if (
+        result.fsStatus === 'no-folder' ||
+        result.fsStatus === 'permission-required'
+      ) {
+        // IDB には書けたがフォルダ側に届いていない。状態は saved にしつつ、
+        // 別途 UI バナーで「フォルダ未設定/権限切れ」を伝える。
+        setSaveStatus('saved');
+        setFsErrorNotice(
+          result.fsStatus === 'no-folder'
+            ? '保存先フォルダが未設定です。「📂 セッション」から再度フォルダを選択してください。'
+            : '保存先フォルダの権限が切れています。「📂 セッション」を開いてフォルダを選び直してください。'
+        );
+      } else {
+        // 'error'
+        setSaveStatus('error');
+        setFsErrorNotice(
+          'フォルダへの書き込みに失敗しました。フォルダを再選択するか、エクスポートでバックアップを取ってください。'
+        );
+      }
+
       savedResetTimerRef.current = setTimeout(() => {
-        setSaveStatus('idle');
+        setSaveStatus((prev) => (prev === 'saved' ? 'idle' : prev));
       }, 1500);
     } catch (e) {
+      // IDB write 失敗はここに来る。実害が大きいので明示する。
       console.error('[save] manual save failed:', e);
       setSaveStatus('error');
+      setFsErrorNotice('保存に失敗しました。ブラウザを再読み込みする前にエクスポートを試してください。');
       savedResetTimerRef.current = setTimeout(() => {
         setSaveStatus('dirty');
       }, 2500);
@@ -159,7 +209,6 @@ const App: React.FC = () => {
       await storage.saveSession(imported);
       setSession(imported);
       drawing.setStrokes(imported.freehandStrokes || []);
-      setPhotos([]);
       setActiveTab('observation');
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,7 +281,6 @@ const App: React.FC = () => {
   const handleNewSession = useCallback((s: Session) => {
     setSession(s);
     drawing.clearAll();
-    setPhotos([]);
     setActiveTab('observation');
     setShowSessionList(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,11 +293,11 @@ const App: React.FC = () => {
   }, []);
 
   const handleAddPhoto = useCallback((dataUrl: string) => {
-    setPhotos((prev) => [...prev, dataUrl]);
     setSession((prev) => {
       if (!prev) return null;
       return {
         ...prev,
+        photos: [...(prev.photos ?? []), dataUrl],
         textNotes: prev.textNotes + `\n[写真添付]\n`,
         updatedAt: Date.now(),
       };
@@ -257,7 +305,11 @@ const App: React.FC = () => {
   }, []);
 
   const handleRemovePhoto = useCallback((index: number) => {
-    setPhotos((prev) => prev.filter((_, i) => i !== index));
+    setSession((prev) => {
+      if (!prev) return null;
+      const next = (prev.photos ?? []).filter((_, i) => i !== index);
+      return { ...prev, photos: next, updatedAt: Date.now() };
+    });
   }, []);
 
   const renderTabContent = (tabId: string) => {
@@ -361,6 +413,20 @@ const App: React.FC = () => {
         hasFSHandle={hasFSHandle}
       />
 
+      {fsErrorNotice && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 flex items-start gap-2">
+          <span className="font-medium">⚠️</span>
+          <span className="flex-1">{fsErrorNotice}</span>
+          <button
+            onClick={() => setFsErrorNotice(null)}
+            className="text-amber-600 hover:text-amber-900"
+            aria-label="通知を閉じる"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {session ? (
         <>
           <TabBar
@@ -426,7 +492,13 @@ const App: React.FC = () => {
           currentSessionId={session?.sessionId ?? null}
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}
-          onClose={() => setShowSessionList(false)}
+          onClose={async () => {
+            setShowSessionList(false);
+            // SessionList 内でフォルダを選び直した可能性があるので再評価
+            const handle = await storage.getDirectoryHandle();
+            setHasFSHandle(!!handle);
+            if (handle) setFsErrorNotice(null);
+          }}
           settings={settings}
         />
       )}

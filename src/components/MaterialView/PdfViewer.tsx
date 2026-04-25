@@ -17,8 +17,16 @@ export const PdfViewer: React.FC<Props> = ({ data, currentPage, onPageChange }) 
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
+  // pdf.js は受け取った TypedArray の underlying ArrayBuffer を Worker に
+  // 転送（transfer）してしまい、転送後は元の buffer が detach されて使えなく
+  // なる。同じ MaterialTab を分割表示の左右両方に開いた場合、片方の Document
+  // が転送した直後にもう一方の Document が同じ buffer を読みに行って
+  // クラッシュする（"detached ArrayBuffer"）。
+  // そのため、各インスタンスごとに buffer を必ずコピーして渡す。
   const fileData = useMemo(() => {
-    return { data: new Uint8Array(data) };
+    const copy = new Uint8Array(data.byteLength);
+    copy.set(new Uint8Array(data));
+    return { data: copy };
   }, [data]);
 
   const onLoadSuccess = useCallback(({ numPages: n }: { numPages: number }) => {

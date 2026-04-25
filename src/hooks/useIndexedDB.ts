@@ -26,6 +26,40 @@ async function getDB(): Promise<IDBPDatabase> {
   return dbInstance;
 }
 
+/**
+ * 旧バージョンで保存されたレコードに新しいフィールドが欠けている場合の補正。
+ * 形が壊れた状態で App に渡らないようにここで吸収する。
+ */
+function normalizeSessionRead(raw: unknown): Session {
+  const r = (raw ?? {}) as Partial<Session> & Record<string, unknown>;
+  return {
+    sessionId: (r.sessionId as string) ?? '',
+    createdAt: (r.createdAt as number) ?? Date.now(),
+    updatedAt: (r.updatedAt as number) ?? Date.now(),
+    metadata: {
+      title: r.metadata?.title ?? '',
+      observer: r.metadata?.observer ?? '',
+      subject: r.metadata?.subject ?? '',
+      grade: r.metadata?.grade ?? '',
+      teacher: r.metadata?.teacher ?? '',
+      classStartTime:
+        typeof r.metadata?.classStartTime === 'number'
+          ? r.metadata.classStartTime
+          : null,
+      classEndTime:
+        typeof r.metadata?.classEndTime === 'number'
+          ? r.metadata.classEndTime
+          : null,
+    },
+    textNotes: (r.textNotes as string) ?? '',
+    freehandStrokes: Array.isArray(r.freehandStrokes) ? r.freehandStrokes : [],
+    materials: Array.isArray(r.materials) ? r.materials : [],
+    photos: Array.isArray(r.photos)
+      ? (r.photos as unknown[]).filter((p): p is string => typeof p === 'string')
+      : [],
+  };
+}
+
 export async function saveSession(session: Session): Promise<void> {
   const db = await getDB();
   await db.put('sessions', session);
@@ -33,13 +67,14 @@ export async function saveSession(session: Session): Promise<void> {
 
 export async function getSession(sessionId: string): Promise<Session | undefined> {
   const db = await getDB();
-  return db.get('sessions', sessionId);
+  const row = await db.get('sessions', sessionId);
+  return row ? normalizeSessionRead(row) : undefined;
 }
 
 export async function getAllSessions(): Promise<Session[]> {
   const db = await getDB();
   const sessions = await db.getAll('sessions');
-  return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+  return sessions.map(normalizeSessionRead).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {

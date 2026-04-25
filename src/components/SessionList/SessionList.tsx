@@ -62,6 +62,7 @@ export const SessionList: React.FC<Props> = ({
       textNotes: '',
       freehandStrokes: [],
       materials: [],
+      photos: [],
     };
     await saveSession(session);
     onNewSession(session);

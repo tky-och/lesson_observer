@@ -26,25 +26,44 @@ export const AnnotationLayerView: React.FC<Props> = ({
   const backgroundRef = useRef<HTMLDivElement>(null);
   const [bgSize, setBgSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
+  // 直近 material から sync 済みの strokes 参照。これと drawing.strokes が
+  // 一致している間は「ユーザーが描き加えていない」ことが分かるので保存しない。
+  // これがないと、別ペインに同じ材料を開いたときにマウント直後の空 strokes が
+  // material.annotations を上書きして既存の注釈を一瞬潰してしまう。
+  const lastSyncedStrokesRef = useRef<typeof drawing.strokes | null>(null);
+  const initializedRef = useRef(false);
+
   // Sync strokes from material on page change
   useEffect(() => {
     const strokes = material.annotations[pageKey] || [];
+    lastSyncedStrokesRef.current = strokes;
+    initializedRef.current = false; // 次回 drawing.strokes が同期完了するまで保存禁止
     drawing.setStrokes(strokes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageKey, material.id]);
 
   // Save annotations back when strokes change
   useEffect(() => {
-    if (drawing.strokes !== pageStrokes) {
-      const newAnnotations = {
-        ...material.annotations,
-        [pageKey]: drawing.strokes,
-      };
-      onUpdate({
-        ...material,
-        annotations: newAnnotations,
-      });
+    // sync 直後に drawing.strokes が同じ参照に揃ったことを検知して
+    // 「以後の変更はユーザー由来」とマークする。
+    if (drawing.strokes === lastSyncedStrokesRef.current) {
+      initializedRef.current = true;
+      return;
     }
+    // sync が完了していないうちに保存しない（マウント直後の空配列で
+    // material.annotations を破壊するのを防ぐ）。
+    if (!initializedRef.current) return;
+    if (drawing.strokes === pageStrokes) return;
+
+    lastSyncedStrokesRef.current = drawing.strokes;
+    const newAnnotations = {
+      ...material.annotations,
+      [pageKey]: drawing.strokes,
+    };
+    onUpdate({
+      ...material,
+      annotations: newAnnotations,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawing.strokes]);
 

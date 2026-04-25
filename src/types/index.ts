@@ -37,6 +37,8 @@ export interface Session {
   textNotes: string;
   freehandStrokes: Stroke[];
   materials: MaterialTab[];
+  /** 添付写真（dataURL）。セッション再開後も復元する */
+  photos: string[];
 }
 
 export interface QuickPhrase {
