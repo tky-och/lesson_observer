@@ -1,4 +1,5 @@
 import getStroke from 'perfect-freehand';
+import { marked } from 'marked';
 import type { Session, Stroke } from '../types';
 import { formatDateTime, formatTimeOnly } from './timestampUtils';
 
@@ -201,13 +202,22 @@ function buildTextContainer(session: Session): HTMLDivElement {
     )
     .join('');
 
-  const notesHtml = escapeHtml(session.textNotes || '（記録なし）').replace(/\n/g, '<br/>');
+  // 観察メモは Markdown として整形して描画する。`gfm` で GFM の表・取消線、
+  // `breaks` で単一改行を <br> に変換（textarea で書いた素朴な行送りも見た目通りになる）。
+  const notesMarkdownSource = session.textNotes && session.textNotes.length > 0
+    ? session.textNotes
+    : '（記録なし）';
+  const notesHtml = marked.parse(notesMarkdownSource, {
+    gfm: true,
+    breaks: true,
+    async: false,
+  }) as string;
 
   div.innerHTML = `
     <h1 style="font-size:20px; font-weight:700; margin:0 0 12px 0;">授業観察記録</h1>
     <table style="border-collapse:collapse; margin:0 0 16px 0; font-size:12px;">${metaRows}</table>
     <h2 style="font-size:14px; font-weight:700; margin:12px 0 8px 0; border-bottom:1px solid #e5e7eb; padding-bottom:4px;">観察メモ</h2>
-    <div style="white-space:pre-wrap; word-wrap:break-word;">${notesHtml}</div>
+    <div class="markdown-body" style="word-wrap:break-word;">${notesHtml}</div>
   `;
   return div;
 }

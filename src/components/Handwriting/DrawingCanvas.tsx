@@ -213,14 +213,24 @@ export const DrawingCanvas: React.FC<Props> = ({
   // ---------------------------------------------------------------
   // ポインタ座標
   // ---------------------------------------------------------------
+  /**
+   * 画面上のポインタ座標をキャンバス内部座標（CSS transform 前）に変換する。
+   * 親要素に `transform: scale(zoom)` がかかっていても、`canvas.style.width`
+   * が指す論理幅と `getBoundingClientRect().width`（拡大後の表示幅）の比から
+   * 動的に補正する。
+   */
   const getPos = useCallback(
     (clientX: number, clientY: number) => {
       const canvas = getCanvas();
       if (!canvas) return { x: 0, y: 0 };
       const rect = canvas.getBoundingClientRect();
+      const cssWidth = parseFloat(canvas.style.width) || rect.width;
+      const cssHeight = parseFloat(canvas.style.height) || rect.height;
+      const scaleX = rect.width === 0 ? 1 : cssWidth / rect.width;
+      const scaleY = rect.height === 0 ? 1 : cssHeight / rect.height;
       return {
-        x: clientX - rect.left,
-        y: clientY - rect.top,
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY,
       };
     },
     [getCanvas]

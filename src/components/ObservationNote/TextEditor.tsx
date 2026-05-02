@@ -1,4 +1,7 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import type { QuickPhrase, SessionMetadata } from '../../types';
 import { TimestampButton } from './TimestampButton';
 import { QuickPhrases } from './QuickPhrases';
@@ -18,6 +21,8 @@ interface Props {
   onOpenMetadataEdit: () => void;
 }
 
+type ViewMode = 'edit' | 'preview' | 'split';
+
 export const TextEditor: React.FC<Props> = ({
   value,
   onChange,
@@ -31,6 +36,7 @@ export const TextEditor: React.FC<Props> = ({
   onOpenMetadataEdit,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('edit');
 
   const insertAtCursor = useCallback(
     (text: string) => {
@@ -112,6 +118,34 @@ export const TextEditor: React.FC<Props> = ({
     .filter((s) => s && s.trim().length > 0)
     .join(' / ');
 
+  const renderPreview = () => (
+    <div className="markdown-body flex-1 w-full p-4 bg-white border border-gray-200 rounded-lg overflow-auto min-h-[200px] leading-relaxed text-base">
+      {value.trim().length === 0 ? (
+        <p className="text-gray-400">プレビューする内容がありません。</p>
+      ) : (
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+          {value}
+        </ReactMarkdown>
+      )}
+    </div>
+  );
+
+  const renderEditor = () => (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={
+        '授業の観察メモを入力してください...\n\n' +
+        '・**太字** *斜体* `コード` ~~取消線~~\n' +
+        '・# 見出し  - 箇条書き  > 引用\n' +
+        '・タイムスタンプ: 授業開始からの経過時刻を挿入（未設定なら現在時刻）\n' +
+        '・定型文ボタン: その行の先頭にラベルとして挿入'
+      }
+      className="flex-1 w-full p-4 border border-gray-200 rounded-lg resize-y text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent min-h-[200px] font-mono"
+    />
+  );
+
   return (
     <div className="flex flex-col gap-3 p-4 h-full">
       {/* Metadata summary + edit button */}
@@ -146,16 +180,54 @@ export const TextEditor: React.FC<Props> = ({
           classEndTime={metadata.classEndTime}
         />
         <QuickPhrases phrases={quickPhrases} onInsertLabel={insertLabel} />
+
+        {/* View mode switcher */}
+        <div className="ml-auto flex items-center gap-0 border border-gray-300 rounded-lg overflow-hidden text-xs">
+          <button
+            onClick={() => setViewMode('edit')}
+            className={`px-3 py-1.5 transition-colors ${
+              viewMode === 'edit'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+            title="編集モード（マークダウン記法で入力）"
+          >
+            ✏️ 編集
+          </button>
+          <button
+            onClick={() => setViewMode('split')}
+            className={`px-3 py-1.5 border-l border-gray-300 transition-colors ${
+              viewMode === 'split'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+            title="編集とプレビューを横に並べる"
+          >
+            ⇉ 分割
+          </button>
+          <button
+            onClick={() => setViewMode('preview')}
+            className={`px-3 py-1.5 border-l border-gray-300 transition-colors ${
+              viewMode === 'preview'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+            title="マークダウンを整形して表示"
+          >
+            👁️ プレビュー
+          </button>
+        </div>
       </div>
 
-      {/* Text area */}
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="授業の観察メモを入力してください...&#10;&#10;・タイムスタンプ: 授業開始からの経過時刻を挿入（未設定なら現在時刻）&#10;・定型文ボタン: その行の先頭にラベルとして挿入"
-        className="flex-1 w-full p-4 border border-gray-200 rounded-lg resize-y text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent min-h-[200px] font-mono"
-      />
+      {/* Editor / preview area */}
+      {viewMode === 'edit' && renderEditor()}
+      {viewMode === 'preview' && renderPreview()}
+      {viewMode === 'split' && (
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 min-h-[200px]">
+          {renderEditor()}
+          {renderPreview()}
+        </div>
+      )}
 
       {/* Photo attach */}
       <PhotoAttach
