@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# オフライン確認用に生成する PDF
+offline-test.pdf

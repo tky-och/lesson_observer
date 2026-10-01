@@ -17,6 +17,7 @@ import { Settings } from './components/Settings/Settings';
 import { ExportPanel } from './components/Export/ExportPanel';
 import { HelpModal } from './components/Help/HelpModal';
 import { FeedbackModal } from './components/Feedback/FeedbackModal';
+import { AppStatusBar } from './components/AppStatus/AppStatusBar';
 
 const App: React.FC = () => {
   const storage = useStorage();
@@ -412,6 +413,8 @@ const App: React.FC = () => {
         isFileSystemSupported={storage.isFileSystemSupported}
         hasFSHandle={hasFSHandle}
       />
+
+      <AppStatusBar onBeforeUpdate={handleSaveNow} />
 
       {fsErrorNotice && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 flex items-start gap-2">

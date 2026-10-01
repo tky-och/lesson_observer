@@ -1,4 +1,11 @@
 import React, { useState } from 'react';
+import {
+  FEEDBACK_ENDPOINT,
+  NetworkError,
+  postFeedback,
+  queueFeedback,
+} from '../../utils/feedbackOutbox';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 
 interface Props {
   onClose: () => void;
@@ -20,7 +27,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
 //
 //  1) Formspree (推奨): https://formspree.io/ で登録 (無料枠あり)
 //       発行されたエンドポイント URL (例: https://formspree.io/f/abcdwxyz) を
-//       下の FEEDBACK_ENDPOINT に貼り付ける
+//       src/utils/feedbackOutbox.ts の FEEDBACK_ENDPOINT に貼り付ける
 //
 //  2) Formsubmit: https://formsubmit.co/ (登録不要だが初回メール認証が必要)
 //       例: https://formsubmit.co/ajax/your@email.com
@@ -29,15 +36,15 @@ const CATEGORY_LABELS: Record<Category, string> = {
 //       そのエンドポイント URL を貼り付ける
 //
 // 未設定の場合は GitHub Issues / コピー / mailto のフォールバック動作になる。
+// オフライン時は端末に一時保存し、オンライン復帰後に自動送信する。
 // ---------------------------------------------------------------------------
-const FEEDBACK_ENDPOINT = 'https://formspree.io/f/mgorldra';
 
 // GitHub Issues フォールバック用 (サインインが必要)
 const GITHUB_REPO = 'tky-och/lesson_observer';
 // メール送信先 (設定すると mailto ボタンが有効化される)
 const FEEDBACK_EMAIL = '';
 
-type SubmitStatus = 'idle' | 'sending' | 'success' | 'error';
+type SubmitStatus = 'idle' | 'sending' | 'success' | 'queued' | 'error';
 
 export const FeedbackModal: React.FC<Props> = ({ onClose }) => {
   const [category, setCategory] = useState<Category>('feature');
@@ -47,6 +54,7 @@ export const FeedbackModal: React.FC<Props> = ({ onClose }) => {
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState<SubmitStatus>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const isOnline = useOnlineStatus();
 
   const buildBody = (): string => {
     const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -82,8 +90,7 @@ export const FeedbackModal: React.FC<Props> = ({ onClose }) => {
     if (!FEEDBACK_ENDPOINT) return;
     setStatus('sending');
     setErrorMsg('');
-    try {
-      const payload = {
+    const payload = {
         category: CATEGORY_LABELS[category],
         title: buildTitle(),
         body: body.trim(),
@@ -91,23 +98,28 @@ export const FeedbackModal: React.FC<Props> = ({ onClose }) => {
         submittedAt: new Date().toISOString(),
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
         _subject: buildTitle(), // Formspree/Formsubmit 用
-      };
-      const res = await fetch(FEEDBACK_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        throw new Error(`サーバーエラー (${res.status})`);
-      }
-      setStatus('success');
-      // 成功後、内容をクリアする
+    };
+    const done = (next: SubmitStatus) => {
+      setStatus(next);
+      // 送信（または送信予約）後、内容をクリアする
       setBody('');
       setTitle('');
+    };
+    // オフライン中は送信を試みず、端末に保存してオンライン復帰後に送る
+    if (!navigator.onLine) {
+      queueFeedback(payload);
+      done('queued');
+      return;
+    }
+    try {
+      await postFeedback(payload);
+      done('success');
     } catch (e) {
+      if (e instanceof NetworkError) {
+        queueFeedback(payload);
+        done('queued');
+        return;
+      }
       setStatus('error');
       setErrorMsg(e instanceof Error ? e.message : '送信に失敗しました');
     }
@@ -149,15 +161,19 @@ export const FeedbackModal: React.FC<Props> = ({ onClose }) => {
 
   const hasDirectEndpoint = FEEDBACK_ENDPOINT.length > 0;
 
-  // 送信完了状態
-  if (status === 'success') {
+  // 送信完了状態（オフライン時は送信予約）
+  if (status === 'success' || status === 'queued') {
     return (
       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 text-center">
-          <div className="text-5xl mb-3">✅</div>
-          <h2 className="text-lg font-bold mb-2">送信しました</h2>
+          <div className="text-5xl mb-3">{status === 'success' ? '✅' : '📥'}</div>
+          <h2 className="text-lg font-bold mb-2">
+            {status === 'success' ? '送信しました' : 'オンラインになったら送信します'}
+          </h2>
           <p className="text-sm text-gray-600 mb-4">
-            フィードバックありがとうございます。内容を確認の上、改善に活用させていただきます。
+            {status === 'success'
+              ? 'フィードバックありがとうございます。内容を確認の上、改善に活用させていただきます。'
+              : '現在オフラインのため、この端末に一時保存しました。電波が戻ってアプリを開いているときに自動で送信されます。'}
           </p>
           <button
             onClick={onClose}
@@ -252,6 +268,12 @@ export const FeedbackModal: React.FC<Props> = ({ onClose }) => {
             />
           </div>
 
+          {hasDirectEndpoint && !isOnline && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+              📴 現在オフラインです。「送信を予約」するとこの端末に一時保存し、オンライン復帰後に自動で送信します。
+            </div>
+          )}
+
           {/* エラー表示 */}
           {status === 'error' && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800">
@@ -292,12 +314,12 @@ export const FeedbackModal: React.FC<Props> = ({ onClose }) => {
               disabled={!body.trim() || status === 'sending'}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40"
             >
-              {status === 'sending' ? '送信中…' : '🚀 送信する'}
+              {status === 'sending' ? '送信中…' : isOnline ? '🚀 送信する' : '📥 送信を予約'}
             </button>
           ) : (
             <button
               onClick={openGitHubIssue}
-              disabled={!body.trim()}
+              disabled={!body.trim() || !isOnline}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40"
               title="GitHub アカウントが必要です"
             >

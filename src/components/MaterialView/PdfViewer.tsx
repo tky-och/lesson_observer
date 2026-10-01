@@ -1,10 +1,8 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import { Document, Page } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-
-// Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+import { pdfjsOptions } from '../../utils/pdfjsSetup';
 
 interface Props {
   data: ArrayBuffer;
@@ -76,6 +74,7 @@ export const PdfViewer: React.FC<Props> = ({ data, currentPage, onPageChange }) 
       >
         <Document
           file={fileData}
+          options={pdfjsOptions}
           onLoadSuccess={onLoadSuccess}
           loading={<div className="p-8 text-gray-400">PDF読み込み中...</div>}
           error={<div className="p-8 text-red-500">PDFの読み込みに失敗しました</div>}

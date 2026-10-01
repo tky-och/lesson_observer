@@ -2,6 +2,7 @@ import getStroke from 'perfect-freehand';
 import { marked } from 'marked';
 import type { Session, Stroke } from '../types';
 import { formatDateTime, formatTimeOnly } from './timestampUtils';
+import { pdfjs, pdfjsOptions } from './pdfjsSetup';
 
 /**
  * セッションを PDF としてエクスポートする。
@@ -365,10 +366,9 @@ function imageToCanvas(img: HTMLImageElement): HTMLCanvasElement {
 }
 
 async function renderPdfAllPagesToCanvas(data: ArrayBuffer): Promise<HTMLCanvasElement[]> {
-  const { pdfjs } = await import('react-pdf');
   // ArrayBuffer は pdfjs が detach するので複製して渡す
   const buf = data.slice(0);
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buf) });
+  const loadingTask = pdfjs.getDocument({ ...pdfjsOptions, data: new Uint8Array(buf) });
   const doc = await loadingTask.promise;
   const canvases: HTMLCanvasElement[] = [];
   for (let i = 1; i <= doc.numPages; i++) {

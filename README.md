@@ -1,3 +1,13 @@
+# 授業観察メモ (lesson_observer)
+
+授業観察の記録・手書きメモ・資料（PDF / 画像）閲覧のための Web アプリ。
+https://tky-och.github.io/lesson_observer/
+
+- PWA 対応: 一度開けば電波なしでも起動・記録・PDF 表示ができます。iPad では「ホーム画面に追加」で使えます。
+- オフライン動作の仕組みと確認手順: [docs/OFFLINE.md](docs/OFFLINE.md)
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
