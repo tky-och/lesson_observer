@@ -120,6 +120,10 @@ export const HelpModal: React.FC<Props> = ({ onClose }) => {
               <li><strong>テキスト / Markdown</strong> — 観察メモをプレーンテキストまたはMarkdownで保存します。</li>
               <li><strong>JSON</strong> — セッション全体を構造化データとして保存します。</li>
               <li><strong>ZIP</strong> — JSON + 資料ファイルをまとめてアーカイブします。</li>
+              <li>
+                iPad では共有シートが開きます。「ファイルに保存」から OneDrive など好きなフォルダに保存できます
+                （共有シートが使えない環境ではダウンロードになります）。
+              </li>
               <li>JSON / ZIP / Markdown / テキストファイルからのインポート（復元）にも対応しています。</li>
             </ul>
           </section>

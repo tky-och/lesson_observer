@@ -3,6 +3,7 @@ import type { Session, Stroke } from '../types';
 import { formatDateTime, formatTimeOnly } from './timestampUtils';
 import { pdfjs, pdfjsOptions } from './pdfjsSetup';
 import { drawStroke } from './strokeRender';
+import type { ExportFile } from './shareFile';
 
 /**
  * セッションを PDF としてエクスポートする。
@@ -17,7 +18,7 @@ import { drawStroke } from './strokeRender';
  *
  * 重たい依存 (jsPDF / html2canvas) は動的 import にしてコード分割する。
  */
-export async function exportPdf(session: Session): Promise<void> {
+export async function buildPdfFile(session: Session): Promise<ExportFile> {
   const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
     import('jspdf'),
     import('html2canvas'),
@@ -155,7 +156,7 @@ export async function exportPdf(session: Session): Promise<void> {
     }
   }
 
-  pdf.save(`${buildExportName(session)}.pdf`);
+  return { blob: pdf.output('blob'), filename: `${buildExportName(session)}.pdf` };
 }
 
 // ---------------------------------------------------------------------------

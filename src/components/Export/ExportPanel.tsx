@@ -1,8 +1,14 @@
 import React, { useRef, useState } from 'react';
 import type { Session } from '../../types';
-import { exportJSON, exportMarkdown, exportText, exportZip } from '../../utils/exportUtils';
-import { exportPdf } from '../../utils/pdfExport';
+import {
+  buildJSONFile,
+  buildMarkdownFile,
+  buildTextFile,
+  buildZipFile,
+} from '../../utils/exportUtils';
+import { buildPdfFile } from '../../utils/pdfExport';
 import { importSessionFromFile } from '../../utils/importUtils';
+import { shareOrDownload, supportsFileShare, type ExportFile } from '../../utils/shareFile';
 
 interface Props {
   session: Session;
@@ -10,30 +16,58 @@ interface Props {
   onImport?: (session: Session) => void;
 }
 
+type ExportType = 'json' | 'markdown' | 'text' | 'zip' | 'pdf';
+
+function buildFile(session: Session, type: ExportType): ExportFile | Promise<ExportFile> {
+  switch (type) {
+    case 'json':
+      return buildJSONFile(session);
+    case 'markdown':
+      return buildMarkdownFile(session);
+    case 'text':
+      return buildTextFile(session);
+    case 'zip':
+      return buildZipFile(session);
+    case 'pdf':
+      return buildPdfFile(session);
+  }
+}
+
 export const ExportPanel: React.FC<Props> = ({ session, onClose, onImport }) => {
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  /** 作成済みだが、タップ直後でなくなったため共有シートを開けなかったファイル */
+  const [pendingFile, setPendingFile] = useState<ExportFile | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const canShare = supportsFileShare();
 
-  const handleExport = async (type: 'json' | 'markdown' | 'text' | 'zip' | 'pdf') => {
+  const deliver = async (file: ExportFile) => {
+    const result = await shareOrDownload(file);
+    setPendingFile(result === 'needs-tap' ? file : null);
+    if (result === 'shared') setMessage(`共有しました：${file.filename}`);
+    else if (result === 'downloaded') setMessage(`ダウンロードしました：${file.filename}`);
+    else setMessage(null);
+  };
+
+  const handleExport = async (type: ExportType) => {
+    setBusy(true);
+    setMessage(null);
+    setPendingFile(null);
+    try {
+      const file = await buildFile(session, type);
+      await deliver(file);
+    } catch (e) {
+      alert(`エクスポートエラー: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSharePending = async () => {
+    if (!pendingFile) return;
     setBusy(true);
     try {
-      switch (type) {
-        case 'json':
-          exportJSON(session);
-          break;
-        case 'markdown':
-          exportMarkdown(session);
-          break;
-        case 'text':
-          exportText(session);
-          break;
-        case 'zip':
-          await exportZip(session);
-          break;
-        case 'pdf':
-          await exportPdf(session);
-          break;
-      }
+      await deliver(pendingFile);
     } catch (e) {
       alert(`エクスポートエラー: ${e}`);
     } finally {
@@ -73,7 +107,31 @@ export const ExportPanel: React.FC<Props> = ({ session, onClose, onImport }) => 
         <div className="p-4 space-y-3">
           <p className="text-sm text-gray-500 mb-2">
             セッション「{session.metadata.title || '無題'}」のデータを書き出します。
+            {canShare && (
+              <>
+                <br />
+                共有シートが開くので、「ファイルに保存」から OneDrive などの保存先を選んでください。
+              </>
+            )}
           </p>
+
+          {busy && <p className="text-sm text-blue-600">ファイルを作成しています…</p>}
+
+          {pendingFile && !busy && (
+            <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 space-y-2">
+              <p className="text-sm text-blue-800">
+                ファイルの準備ができました。下のボタンを押すと共有シートが開きます。
+              </p>
+              <button
+                onClick={handleSharePending}
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+              >
+                📤 {pendingFile.filename} を共有・保存
+              </button>
+            </div>
+          )}
+
+          {message && !busy && <p className="text-sm text-green-700">✓ {message}</p>}
 
           <button
             onClick={() => handleExport('text')}
