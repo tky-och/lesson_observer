@@ -78,6 +78,9 @@ export const AnnotationLayerView: React.FC<Props> = ({
     onUpdate({
       ...material,
       annotations: newAnnotations,
+      // 画像は画面の幅で表示幅が変わるので、書いたときの幅を一緒に残す
+      // （画面表示と PDF 書き出しで注釈の位置を合わせるのに使う）
+      ...(material.type === 'image' && bgSize.w > 0 ? { annotationViewWidth: bgSize.w } : {}),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawing.strokes]);
@@ -267,7 +270,9 @@ export const AnnotationLayerView: React.FC<Props> = ({
             }}
           >
             {material.type === 'image' ? (
-              <ImageViewer data={material.data} />
+              // 注釈を書いた後は、そのときの幅に固定して表示する。画面の向きや
+              // 分割表示で幅が変わっても、注釈が画像からずれないようにするため。
+              <ImageViewer data={material.data} width={material.annotationViewWidth} />
             ) : (
               <PdfViewer
                 data={material.data}

@@ -3,6 +3,7 @@ import type { Session, Stroke } from '../types';
 import { formatDateTime, formatTimeOnly } from './timestampUtils';
 import { pdfjs, pdfjsOptions } from './pdfjsSetup';
 import { drawStroke } from './strokeRender';
+import { PDF_PAGE_GAP, PDF_VIEW_WIDTH, pdfPageViewHeight } from './materialLayout';
 import type { ExportFile } from './shareFile';
 
 /**
@@ -101,7 +102,13 @@ export async function buildPdfFile(session: Session): Promise<ExportFile> {
         // ページごとのアノテーション
         const annots = mat.annotations[1] || [];
         if (annots.length > 0) {
-          const annotCanvas = renderStrokesToCanvasWithBg(annots, imgCanvas);
+          // 注釈は画面に表示した画像の上の座標。書いたときの表示幅が残っていなければ
+          // （以前の記録）元の大きさで表示していたものとみなす。
+          const viewWidth = mat.annotationViewWidth ?? imgCanvas.width;
+          const annotCanvas = renderStrokesToCanvasWithBg(annots, imgCanvas, {
+            viewWidth,
+            viewTop: 0,
+          });
           if (annotCanvas) {
             addPageIfNeeded();
             addSectionTitle(pdf, `資料 + アノテーション: ${mat.name}`, margin, pageW);
@@ -122,16 +129,26 @@ export async function buildPdfFile(session: Session): Promise<ExportFile> {
       try {
         const pages = await renderPdfAllPagesToCanvas(rawBuf);
         console.log('[pdfExport] pdf material pages:', pages.length, mat.name);
+        // 画面では全ページを縦に積んだ上に 1 枚の手書きキャンバスを重ねているので、
+        // 注釈の座標は 1 ページ目の上端が基準。保存先のページ番号に関係なく、
+        // 座標からどのページに書いたかを割り出す。
+        const allAnnots = Object.values(mat.annotations).flat();
+        let viewTop = 0;
         for (let i = 0; i < pages.length; i++) {
-          const pageCanvas = pages[i];
+          const { canvas: pageCanvas, viewHeight } = pages[i];
           const pageNum = i + 1;
           addPageIfNeeded();
           addSectionTitle(pdf, `資料(PDF): ${mat.name} p.${pageNum}`, margin, pageW);
           fitCanvasToPage(pdf, pageCanvas, margin, pageW, pageH, margin + 36);
 
-          const annots = mat.annotations[pageNum] || [];
+          const annots = allAnnots.filter((s) => strokeOverlaps(s, viewTop, viewTop + viewHeight));
+          const pageViewTop = viewTop;
+          viewTop += viewHeight + PDF_PAGE_GAP;
           if (annots.length > 0) {
-            const annotCanvas = renderStrokesToCanvasWithBg(annots, pageCanvas);
+            const annotCanvas = renderStrokesToCanvasWithBg(annots, pageCanvas, {
+              viewWidth: PDF_VIEW_WIDTH,
+              viewTop: pageViewTop,
+            });
             if (annotCanvas) {
               addPageIfNeeded();
               addSectionTitle(
@@ -277,10 +294,25 @@ function renderStrokesToCanvas(strokes: Stroke[]): HTMLCanvasElement | null {
   return canvas;
 }
 
-/** 背景 canvas の上にストロークを重ねて画像化する */
+/** ストロークが縦方向の範囲 [top, bottom] にかかっているか（線の太さも含める） */
+function strokeOverlaps(stroke: Stroke, top: number, bottom: number): boolean {
+  const r = stroke.size;
+  return stroke.points.some((p) => p[1] + r >= top && p[1] - r <= bottom);
+}
+
+/**
+ * 背景 canvas の上にストロークを重ねて画像化する。
+ *
+ * ストロークは画面に表示した資料の上の座標（CSS px）なので、背景 canvas の
+ * 大きさに合わせて拡大し、位置をそろえてから描く。
+ *
+ * @param view.viewWidth 画面での背景の表示幅（CSS px）
+ * @param view.viewTop   画面での背景の上端の位置（CSS px）。PDF の 2 ページ目以降で使う
+ */
 function renderStrokesToCanvasWithBg(
   strokes: Stroke[],
-  bgCanvas: HTMLCanvasElement
+  bgCanvas: HTMLCanvasElement,
+  view: { viewWidth: number; viewTop: number }
 ): HTMLCanvasElement | null {
   const canvas = document.createElement('canvas');
   canvas.width = bgCanvas.width;
@@ -288,6 +320,13 @@ function renderStrokesToCanvasWithBg(
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   ctx.drawImage(bgCanvas, 0, 0);
+  // ページの外にはみ出した部分（隣のページにかかる線）は描かない
+  ctx.beginPath();
+  ctx.rect(0, 0, canvas.width, canvas.height);
+  ctx.clip();
+  const scale = canvas.width / view.viewWidth;
+  ctx.scale(scale, scale);
+  ctx.translate(0, -view.viewTop);
   for (const s of strokes) drawStroke(ctx, s);
   return canvas;
 }
@@ -351,14 +390,23 @@ function imageToCanvas(img: HTMLImageElement): HTMLCanvasElement {
   return canvas;
 }
 
-async function renderPdfAllPagesToCanvas(data: ArrayBuffer): Promise<HTMLCanvasElement[]> {
+/**
+ * PDF の全ページを画像化する。
+ * viewHeight は画面（幅 PDF_VIEW_WIDTH）に表示したときのページの高さで、
+ * 注釈がどのページに書かれたかを割り出すのに使う。
+ */
+async function renderPdfAllPagesToCanvas(
+  data: ArrayBuffer
+): Promise<Array<{ canvas: HTMLCanvasElement; viewHeight: number }>> {
   // ArrayBuffer は pdfjs が detach するので複製して渡す
   const buf = data.slice(0);
   const loadingTask = pdfjs.getDocument({ ...pdfjsOptions, data: new Uint8Array(buf) });
   const doc = await loadingTask.promise;
-  const canvases: HTMLCanvasElement[] = [];
+  const pages: Array<{ canvas: HTMLCanvasElement; viewHeight: number }> = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
+    const base = page.getViewport({ scale: 1 });
+    const viewHeight = pdfPageViewHeight(base.width, base.height);
     const viewport = page.getViewport({ scale: 2 });
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
@@ -366,9 +414,9 @@ async function renderPdfAllPagesToCanvas(data: ArrayBuffer): Promise<HTMLCanvasE
     const ctx = canvas.getContext('2d');
     if (!ctx) continue;
     await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-    canvases.push(canvas);
+    pages.push({ canvas, viewHeight });
   }
-  return canvases;
+  return pages;
 }
 
 // ---------------------------------------------------------------------------
