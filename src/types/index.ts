@@ -29,6 +29,13 @@ export interface MaterialTab {
   data: ArrayBuffer;
   currentPage: number;
   annotations: MaterialAnnotations;
+  /**
+   * 画像資料に注釈を書いたときの画像の表示幅（CSS px）。
+   * 注釈はこの幅で表示した画像の上の座標で保存されるので、
+   * 画面表示と PDF 書き出しの両方で、この幅を基準に位置を合わせる。
+   * 注釈を書く前の画像、PDF 資料、以前の記録では未設定。
+   */
+  annotationViewWidth?: number;
 }
 
 export interface Session {

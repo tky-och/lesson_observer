@@ -119,6 +119,9 @@ function normalizeSession(raw: unknown): Session {
           data,
           currentPage: (mm.currentPage as number) ?? 1,
           annotations: (mm.annotations as MaterialTab['annotations']) ?? {},
+          ...(typeof mm.annotationViewWidth === 'number' && mm.annotationViewWidth > 0
+            ? { annotationViewWidth: mm.annotationViewWidth }
+            : {}),
         };
       })
     : [];

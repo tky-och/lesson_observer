@@ -3,6 +3,7 @@ import { Document, Page } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { pdfjsOptions } from '../../utils/pdfjsSetup';
+import { PDF_PAGE_GAP, PDF_VIEW_WIDTH } from '../../utils/materialLayout';
 
 interface Props {
   data: ArrayBuffer;
@@ -84,11 +85,12 @@ export const PdfViewer: React.FC<Props> = ({ data, currentPage, onPageChange }) 
               <div
                 key={pageNum}
                 ref={(el) => setPageRef(pageNum, el)}
-                className="mb-2 relative"
+                className="relative"
+                style={{ marginBottom: PDF_PAGE_GAP }}
               >
                 <Page
                   pageNumber={pageNum}
-                  width={800}
+                  width={PDF_VIEW_WIDTH}
                   renderTextLayer={false}
                   renderAnnotationLayer={false}
                 />
