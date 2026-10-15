@@ -20,13 +20,15 @@ export function useDrawing(initialColor = '#000000', initialSize = 4) {
   const currentStrokeRef = useRef<Stroke | null>(null);
 
   const startStroke = useCallback(
-    (x: number, y: number, pressure: number = 0.5) => {
+    (x: number, y: number, pressure: number = 0.5, isPen = false) => {
       currentStrokeRef.current = {
         id: uuidv4(),
         points: [[x, y, pressure]],
         color: isErasing ? '#ffffff' : penColor,
         size: isErasing ? 20 : penSize,
         timestamp: Date.now(),
+        // 消しゴムは筆圧で太さを変えない
+        ...(isPen && !isErasing ? { pen: true } : {}),
       };
     },
     [penColor, penSize, isErasing]
@@ -45,6 +47,11 @@ export function useDrawing(initialColor = '#000000', initialSize = 4) {
     currentStrokeRef.current = null;
     setStrokes((prev) => [...prev, finished]);
     setUndoneStrokes([]);
+  }, []);
+
+  /** 書きかけのストロークを捨てる（ペンを置く前に触れた手のひらの線など） */
+  const cancelStroke = useCallback(() => {
+    currentStrokeRef.current = null;
   }, []);
 
   const undo = useCallback(() => {
@@ -91,6 +98,7 @@ export function useDrawing(initialColor = '#000000', initialSize = 4) {
     startStroke,
     addPoint,
     endStroke,
+    cancelStroke,
     undo,
     redo,
     clearAll,

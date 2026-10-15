@@ -33,6 +33,13 @@ export const AnnotationLayerView: React.FC<Props> = ({
   const backgroundRef = useRef<HTMLDivElement>(null);
   const [bgSize, setBgSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [zoom, setZoom] = useState(1);
+  // 手書きキャンバスの解像度に使う倍率。ピンチ中に毎フレーム描き直すと重いので、
+  // 拡大縮小が止まってから少し待って反映する。
+  const [renderZoom, setRenderZoom] = useState(1);
+  useEffect(() => {
+    const t = window.setTimeout(() => setRenderZoom(zoom), 200);
+    return () => window.clearTimeout(t);
+  }, [zoom]);
 
   // 直近 material から sync 済みの strokes 参照。これと drawing.strokes が
   // 一致している間は「ユーザーが描き加えていない」ことが分かるので保存しない。
@@ -293,6 +300,8 @@ export const AnnotationLayerView: React.FC<Props> = ({
                     onStartStroke={drawing.startStroke}
                     onAddPoint={drawing.addPoint}
                     onEndStroke={drawing.endStroke}
+                    onCancelStroke={drawing.cancelStroke}
+                    renderScale={renderZoom}
                   />
                 </div>
               </div>

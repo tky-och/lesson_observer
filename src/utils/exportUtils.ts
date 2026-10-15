@@ -1,9 +1,10 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import type { Session } from '../types';
+import type { ExportFile } from './shareFile';
 import { formatDate, formatDateTime, formatTimeOnly } from './timestampUtils';
 
-export function exportJSON(session: Session): void {
+export function buildJSONFile(session: Session): ExportFile {
   // Strip non-serializable ArrayBuffer material data from JSON-only export
   const safe = {
     ...session,
@@ -15,19 +16,19 @@ export function exportJSON(session: Session): void {
   };
   const json = JSON.stringify(safe, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
-  saveAs(blob, `${buildExportName(session)}.json`);
+  return { blob, filename: `${buildExportName(session)}.json` };
 }
 
-export function exportMarkdown(session: Session): void {
+export function buildMarkdownFile(session: Session): ExportFile {
   const md = buildMarkdown(session);
   const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-  saveAs(blob, `${buildExportName(session)}.md`);
+  return { blob, filename: `${buildExportName(session)}.md` };
 }
 
-export function exportText(session: Session): void {
+export function buildTextFile(session: Session): ExportFile {
   const txt = buildPlainText(session);
   const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
-  saveAs(blob, `${buildExportName(session)}.txt`);
+  return { blob, filename: `${buildExportName(session)}.txt` };
 }
 
 export async function exportImage(canvas: HTMLCanvasElement, session: Session): Promise<void> {
@@ -39,7 +40,10 @@ export async function exportImage(canvas: HTMLCanvasElement, session: Session): 
   }
 }
 
-export async function exportZip(session: Session, canvasEl?: HTMLCanvasElement | null): Promise<void> {
+export async function buildZipFile(
+  session: Session,
+  canvasEl?: HTMLCanvasElement | null
+): Promise<ExportFile> {
   const zip = new JSZip();
   const folderName = buildExportName(session);
   const folder = zip.folder(folderName)!;
@@ -72,8 +76,8 @@ export async function exportZip(session: Session, canvasEl?: HTMLCanvasElement |
     }
   }
 
-  const zipBlob = await zip.generateAsync({ type: 'blob' });
-  saveAs(zipBlob, `${folderName}.zip`);
+  const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
+  return { blob, filename: `${folderName}.zip` };
 }
 
 /**

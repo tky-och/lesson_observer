@@ -14,6 +14,8 @@ export interface Stroke {
   color: string;
   size: number;
   timestamp: number;
+  /** Apple Pencil などのペンで書いた（points の pressure が実測値） */
+  pen?: boolean;
 }
 
 export interface MaterialAnnotations {

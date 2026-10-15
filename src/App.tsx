@@ -366,6 +366,7 @@ const App: React.FC = () => {
               onStartStroke={drawing.startStroke}
               onAddPoint={drawing.addPoint}
               onEndStroke={drawing.endStroke}
+              onCancelStroke={drawing.cancelStroke}
               canvasRef={tabId === activeTab ? canvasRef : undefined}
             />
           </div>

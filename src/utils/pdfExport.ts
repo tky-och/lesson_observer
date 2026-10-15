@@ -1,8 +1,9 @@
-import getStroke from 'perfect-freehand';
 import { marked } from 'marked';
 import type { Session, Stroke } from '../types';
 import { formatDateTime, formatTimeOnly } from './timestampUtils';
 import { pdfjs, pdfjsOptions } from './pdfjsSetup';
+import { drawStroke } from './strokeRender';
+import type { ExportFile } from './shareFile';
 
 /**
  * セッションを PDF としてエクスポートする。
@@ -17,7 +18,7 @@ import { pdfjs, pdfjsOptions } from './pdfjsSetup';
  *
  * 重たい依存 (jsPDF / html2canvas) は動的 import にしてコード分割する。
  */
-export async function exportPdf(session: Session): Promise<void> {
+export async function buildPdfFile(session: Session): Promise<ExportFile> {
   const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
     import('jspdf'),
     import('html2canvas'),
@@ -155,7 +156,7 @@ export async function exportPdf(session: Session): Promise<void> {
     }
   }
 
-  pdf.save(`${buildExportName(session)}.pdf`);
+  return { blob: pdf.output('blob'), filename: `${buildExportName(session)}.pdf` };
 }
 
 // ---------------------------------------------------------------------------
@@ -236,24 +237,8 @@ function escapeHtml(s: string): string {
 // 手書き描画
 // ---------------------------------------------------------------------------
 
-const STROKE_OPTIONS = {
-  thinning: 0.5,
-  smoothing: 0.5,
-  streamline: 0.5,
-  simulatePressure: true,
-  last: true,
-};
-
-function drawStrokeSync(ctx: CanvasRenderingContext2D, stroke: Stroke) {
-  const outline = getStroke(stroke.points, { ...STROKE_OPTIONS, size: stroke.size });
-  if (!outline || outline.length < 2) return;
-  ctx.fillStyle = stroke.color;
-  const path = new Path2D();
-  path.moveTo(outline[0][0], outline[0][1]);
-  for (let i = 1; i < outline.length; i++) path.lineTo(outline[i][0], outline[i][1]);
-  path.closePath();
-  ctx.fill(path);
-}
+/** 手書きメモページの解像度（細かい字がつぶれないよう 1 CSS px を 2 px で描く） */
+const HANDWRITING_EXPORT_SCALE = 2;
 
 function computeBBox(strokes: Stroke[]): { minX: number; minY: number; maxX: number; maxY: number } {
   let minX = Infinity,
@@ -280,14 +265,15 @@ function renderStrokesToCanvas(strokes: Stroke[]): HTMLCanvasElement | null {
   const h = Math.max(100, Math.ceil(bbox.maxY - bbox.minY + pad * 2));
 
   const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = w * HANDWRITING_EXPORT_SCALE;
+  canvas.height = h * HANDWRITING_EXPORT_SCALE;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(HANDWRITING_EXPORT_SCALE, HANDWRITING_EXPORT_SCALE);
   ctx.translate(-bbox.minX + pad, -bbox.minY + pad);
-  for (const s of strokes) drawStrokeSync(ctx, s);
+  for (const s of strokes) drawStroke(ctx, s);
   return canvas;
 }
 
@@ -302,7 +288,7 @@ function renderStrokesToCanvasWithBg(
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   ctx.drawImage(bgCanvas, 0, 0);
-  for (const s of strokes) drawStrokeSync(ctx, s);
+  for (const s of strokes) drawStroke(ctx, s);
   return canvas;
 }
 
